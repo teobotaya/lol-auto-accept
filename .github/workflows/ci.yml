@@ -1,0 +1,26 @@
+name: pruebas
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+permissions:
+  contents: read
+
+jobs:
+  probar:
+    # Las mismas pruebas en los dos sistemas que la app dice soportar: el
+    # descubrimiento de credenciales es justo lo que más cambia entre ellos.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Unitarias e integración contra un LCU falso
+        run: node test/pruebas.mjs
+      - name: La app entera, de punta a punta
+        run: node test/e2e.mjs

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Auto Accept — League</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+<header class="barra">
+  <div class="marca"><span class="hex" aria-hidden="true"></span>
+    <div><h1>Auto Accept</h1><p>acepta la partida por vos</p></div>
+  </div>
+  <div class="conex" id="conex" data-ok="false"><span class="punto"></span><span id="conex-txt">buscando el cliente…</span></div>
+</header>
+
+<main>
+  <section class="tarjeta principal">
+    <div class="fase" id="fase" data-f="">
+      <span class="fase-rotulo">Estado</span>
+      <strong id="fase-txt">—</strong>
+      <span class="fase-sub" id="fase-sub">esperando al cliente de League</span>
+    </div>
+    <div class="cuenta-atras" id="cuenta" hidden>
+      <div class="anillo"><span id="anillo-n">0</span></div>
+      <p>acepto en <b id="anillo-ms">—</b></p>
+      <button class="b b-rojo" id="cancelar">Cancelar esta</button>
+    </div>
+    <button class="b b-grande" id="pausa">Pausar</button>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Cuánto esperar antes de aceptar</h2>
+    <p class="ayuda">Aceptar en cero milisegundos no te deja arrepentirte si te levantaste, y es la señal más obvia de que hay algo automático. El valor real varía un poco en cada partida.</p>
+    <div class="control">
+      <label for="retardo">Retardo</label>
+      <input type="range" id="retardo" min="0" max="7000" step="100">
+      <output id="retardo-v" class="mono">—</output>
+    </div>
+    <div class="control">
+      <label for="variacion">Variación</label>
+      <input type="range" id="variacion" min="0" max="3000" step="50">
+      <output id="variacion-v" class="mono">—</output>
+    </div>
+  </section>
+
+  <section class="tarjeta cifras">
+    <div><span class="n" id="c-aceptadas">0</span><span class="l">aceptadas</span></div>
+    <div><span class="n" id="c-canceladas">0</span><span class="l">canceladas</span></div>
+    <div><span class="n" id="c-errores">0</span><span class="l">errores</span></div>
+    <div><span class="n" id="c-min">0</span><span class="l">minutos activo</span></div>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Qué fue pasando</h2>
+    <ul class="bitacora" id="bitacora" aria-live="polite"></ul>
+  </section>
+</main>
+
+<footer>
+  <p>Habla con la API local del cliente (LCU). No lee la pantalla, no mueve el mouse y no toca el proceso del juego.</p>
+</footer>
+<script src="ui.js" defer></script>
+</body>
+</html>
