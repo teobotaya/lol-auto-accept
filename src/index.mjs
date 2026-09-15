@@ -14,6 +14,7 @@ import { descubrir } from './descubrir.mjs';
 import { Lcu } from './lcu.mjs';
 import { Vigia } from './vigia.mjs';
 import * as ajustes from './ajustes.mjs';
+import { crearAvisador, CANALES, enmascarar } from './avisos.mjs';
 
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
                 '.js': 'text/javascript; charset=utf-8' };
@@ -23,6 +24,7 @@ if (process.env.PUERTO_PANEL) config.puertoPanel = Number(process.env.PUERTO_PAN
 let lcu = null;
 let vigia = null;
 const bitacora = [];
+const avisador = crearAvisador(() => config.avisos, (t, x) => anotar(t, x));
 
 const anotar = (tipo, texto) => {
   bitacora.unshift({ t: Date.now(), tipo, texto });
@@ -54,7 +56,11 @@ async function conectar() {
   anotar('ok', `conectado al cliente por ${cred.origen}, puerto ${cred.puerto}${quien}`);
   vigia = new Vigia(lcu, config);
   vigia.on('aceptando', ({ enMs }) => anotar('cola', `partida encontrada, acepto en ${enMs} ms`));
-  vigia.on('aceptado', ({ tras }) => anotar('ok', `aceptada tras ${tras} ms`));
+  vigia.on('aceptado', ({ tras }) => {
+    anotar('ok', `aceptada tras ${tras} ms`);
+    /* Sin await: si el aviso tarda o falla, la partida ya está aceptada igual. */
+    avisador.avisar('aceptada', { tras, aceptadas: vigia.cuenta.aceptadas });
+  });
   vigia.on('cancelado', ({ motivo }) => anotar('aviso', `no acepté: ${motivo}`));
   vigia.on('problema', ({ mensaje }) => anotar('error', mensaje));
   vigia.arrancar();
@@ -96,6 +102,30 @@ const servidor = createServer((req, res) => {
   }
   if (url.pathname === '/api/cancelar' && req.method === 'POST') {
     return json(res, { cancelado: vigia ? vigia.cancelarAceptacion('lo cancelaste vos') : false });
+  }
+  if (url.pathname === '/api/canales') {
+    return json(res, {
+      canales: Object.entries(CANALES).map(([id, c]) => ({
+        id, etiqueta: c.etiqueta, ayuda: c.ayuda,
+        destinoRotulo: c.destinoRotulo ?? null,
+        disponible: !c.soloEn || c.soloEn === process.platform,
+      })),
+      actual: { ...config.avisos, destinoVisible: enmascarar(config.avisos.destino) },
+    });
+  }
+  if (url.pathname === '/api/avisos' && req.method === 'POST') {
+    const nuevo = ajustes.sanear({ ...config, avisos: {
+      canal: url.searchParams.get('canal') ?? config.avisos.canal,
+      destino: url.searchParams.get('destino') ?? config.avisos.destino,
+    } });
+    config.avisos = nuevo.avisos;
+    ajustes.guardar(config);
+    anotar('aviso', `avisos por ${config.avisos.canal}` +
+      (config.avisos.destino ? ` → ${enmascarar(config.avisos.destino)}` : ''));
+    return json(res, config.avisos);
+  }
+  if (url.pathname === '/api/probar-aviso' && req.method === 'POST') {
+    return avisador.probar().then((r) => json(res, r));
   }
   if (url.pathname === '/api/ajustes' && req.method === 'POST') {
     const nuevo = ajustes.sanear({

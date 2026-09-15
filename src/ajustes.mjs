@@ -13,7 +13,10 @@ export const POR_DEFECTO = {
   ritmoRapido: 300,
   activo: true,
   puertoPanel: 8123,
+  avisos: { canal: 'ninguno', destino: '' },
 };
+
+const CANALES_VALIDOS = new Set(['ninguno', 'ntfy', 'pushcut', 'webhook', 'imessage']);
 
 const entero = (v, min, max, sino) => {
   const n = Number.parseInt(v, 10);
@@ -30,6 +33,11 @@ export function sanear(entrada = {}) {
     ritmoRapido: entero(entrada.ritmoRapido, 100, 2000, POR_DEFECTO.ritmoRapido),
     activo: entrada.activo !== false,
     puertoPanel: entero(entrada.puertoPanel, 1024, 65535, POR_DEFECTO.puertoPanel),
+    avisos: {
+      /* Un canal desconocido apaga los avisos en vez de romper el arranque. */
+      canal: CANALES_VALIDOS.has(entrada.avisos?.canal) ? entrada.avisos.canal : 'ninguno',
+      destino: String(entrada.avisos?.destino ?? '').trim().slice(0, 500),
+    },
   };
 }
 

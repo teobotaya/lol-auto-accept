@@ -52,8 +52,50 @@
       `<li data-t="${esc(l.tipo)}"><span class="hora">${hora(l.t)}</span><span>${esc(l.texto)}</span></li>`).join('');
   }
 
+  /* ------------------------------------------------------------ avisos */
+  let canales = [];
+  async function cargarCanales() {
+    const d = await fetch('api/canales').then((r) => r.json()).catch(() => null);
+    if (!d) return;
+    canales = d.canales;
+    $('#canal').innerHTML = canales.map((c) =>
+      `<option value="${esc(c.id)}"${c.disponible ? '' : ' disabled'}>${esc(c.etiqueta)}${c.disponible ? '' : ' — no disponible acá'}</option>`).join('');
+    $('#canal').value = d.actual.canal;
+    /* El destino no se rellena con el valor real: puede tener un secreto y
+       queda a la vista de cualquiera que mire la pantalla. Se muestra
+       recortado como marcador, y solo se manda si escribís uno nuevo. */
+    $('#destino').value = '';
+    $('#destino').placeholder = d.actual.destinoVisible || '—';
+    pintarCanal();
+  }
+  function pintarCanal() {
+    const c = canales.find((x) => x.id === $('#canal').value);
+    $('#canal-ayuda').textContent = c?.ayuda ?? '';
+    $('#fila-destino').style.display = c && c.destinoRotulo ? '' : 'none';
+    if (c?.destinoRotulo) $('#destino-rotulo').textContent = c.destinoRotulo;
+  }
+  $('#canal').addEventListener('change', pintarCanal);
+  $('#guardar-aviso').addEventListener('click', async () => {
+    const p = new URLSearchParams({ canal: $('#canal').value });
+    if ($('#destino').value.trim()) p.set('destino', $('#destino').value.trim());
+    await fetch('api/avisos?' + p, { method: 'POST' });
+    mostrarResultado(true, 'guardado');
+    cargarCanales(); traer();
+  });
+  $('#probar-aviso').addEventListener('click', async () => {
+    mostrarResultado(null, 'enviando…');
+    const r = await fetch('api/probar-aviso', { method: 'POST' }).then((x) => x.json()).catch(() => ({ ok: false, detalle: 'sin respuesta' }));
+    mostrarResultado(r.ok, r.ok ? 'enviado — miralo en el iPhone' : r.detalle);
+    traer();
+  });
+  function mostrarResultado(ok, txt) {
+    const el = $('#resultado-aviso');
+    el.textContent = txt;
+    if (ok === null) el.removeAttribute('data-ok'); else el.dataset.ok = String(ok);
+  }
+
   const traer = () => fetch('api/estado').then((r) => r.json()).then(pintar).catch(() => {});
-  traer(); setInterval(traer, 700);
+  traer(); cargarCanales(); setInterval(traer, 700);
 
   $('#pausa').addEventListener('click', () => fetch('api/pausa', { method: 'POST' }).then(traer));
   $('#cancelar').addEventListener('click', () => fetch('api/cancelar', { method: 'POST' }).then(traer));

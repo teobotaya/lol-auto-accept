@@ -47,6 +47,27 @@
     </div>
   </section>
 
+  <section class="tarjeta">
+    <h2>Avisarme al teléfono</h2>
+    <p class="ayuda">Atajos no puede quedarse escuchando algo de internet por su cuenta: hace falta algo que reciba el push. Elegí por dónde.</p>
+    <div class="control">
+      <label for="canal">Canal</label>
+      <select id="canal"></select>
+      <span></span>
+    </div>
+    <p class="ayuda" id="canal-ayuda" style="margin:10px 0 0"></p>
+    <div class="control" id="fila-destino">
+      <label for="destino" id="destino-rotulo">Destino</label>
+      <input type="text" id="destino" placeholder="—" autocomplete="off" spellcheck="false">
+      <span></span>
+    </div>
+    <div class="acciones-aviso">
+      <button class="b" id="guardar-aviso">Guardar</button>
+      <button class="b" id="probar-aviso">Probar ahora</button>
+      <span class="resultado mono" id="resultado-aviso"></span>
+    </div>
+  </section>
+
   <section class="tarjeta cifras">
     <div><span class="n" id="c-aceptadas">0</span><span class="l">aceptadas</span></div>
     <div><span class="n" id="c-canceladas">0</span><span class="l">canceladas</span></div>
