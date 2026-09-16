@@ -1,6 +1,6 @@
 :root{
   --fondo:#0A0E14; --tarjeta:#121821; --borde:#1F2A38;
-  --txt:#EAF2F8; --apagado:#93A4B8; --tenue:#64748B;
+  --txt:#EAF2F8; --apagado:#93A4B8; --tenue:#7C8AA0;
   --oro:#C8AA6E; --oro-txt:#0A0E14; --azul:#0AC8B9; --rojo:#FF5C5C; --verde:#5BE59B;
   --mono:'JetBrains Mono',ui-monospace,Menlo,monospace; --e:cubic-bezier(.32,.72,.35,1);
 }
@@ -59,10 +59,40 @@ main{max-width:760px;margin:0 auto;padding:clamp(18px,4vw,30px);display:grid;gap
 .b-grande[data-pausado="true"]{background:#1A222D;color:var(--txt);border-color:var(--borde)}
 .b-rojo:hover{border-color:var(--rojo);color:var(--rojo)}
 
+.seleccion{display:grid;gap:16px;animation:aparece .3s var(--e)}
+.sel-cab{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.sel-txt{display:grid;gap:4px}
+.sel-txt strong{font-size:22px;letter-spacing:-.02em}
+.seleccion[data-turno="true"] .sel-txt strong{color:var(--oro)}
+.reloj{display:flex;align-items:baseline;gap:3px;padding:10px 16px;border-radius:12px;
+  border:1px solid var(--borde);background:#0E141C;font:700 26px/1 var(--mono);
+  color:var(--txt);font-variant-numeric:tabular-nums}
+.reloj small{font-size:13px;color:var(--tenue);font-weight:500}
+/* El rojo aparece solo cuando el reloj de verdad apremia: si estuviera siempre
+   encendido dejaría de querer decir algo. */
+.reloj[data-apremio="true"]{color:var(--rojo);border-color:var(--rojo)}
+.equipo{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.equipo li{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;
+  background:#0E141C;font-size:13.5px;color:var(--apagado)}
+.equipo li[data-yo="true"]{background:#15202C;color:var(--txt);box-shadow:inset 2px 0 0 var(--oro)}
+.equipo .pos{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--tenue);width:74px;flex-shrink:0}
+.equipo .camp{font-weight:600}
+.equipo li[data-listo="false"] .camp{color:var(--tenue);font-weight:400}
+.baneos{color:var(--tenue);font-size:12.5px}
+.casilla{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:4px 0;
+  color:var(--apagado);font-size:13.5px;cursor:pointer;line-height:1.5}
+.casilla input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--oro);flex-shrink:0;cursor:pointer}
+
 .control{display:grid;grid-template-columns:96px 1fr 76px;align-items:center;gap:14px;margin-top:12px}
-.control label{font-size:14px;color:var(--apagado)}
+/* 24px de alto mínimo: un rótulo también es un objetivo táctil, porque tocarlo
+   enfoca el control (WCAG 2.2, 2.5.8). */
+.control label{font-size:14px;color:var(--apagado);min-height:24px;display:flex;align-items:center}
 .control output{text-align:right;font-size:13.5px;color:var(--oro)}
-input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;background:#1E2836;outline:none}
+/* La barra se ve de 6px pero el control mide 24: el relleno transparente
+   agranda el área que se puede tocar sin engordar el dibujo. */
+input[type=range]{-webkit-appearance:none;appearance:none;height:24px;padding:9px 0;
+  background:#1E2836;background-clip:content-box;outline:none}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
   background:var(--oro);cursor:pointer;border:3px solid var(--tarjeta)}
 input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--oro);

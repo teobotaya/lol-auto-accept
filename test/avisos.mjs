@@ -3,6 +3,8 @@
    verdad — lo que hay que verificar es que el pedido salga bien armado. */
 import { createServer } from 'node:http';
 import { CANALES, armarMensaje, crearAvisador, enmascarar, urlNtfy } from '../src/avisos.mjs';
+import { resumen } from '../src/champselect.mjs';
+import { sesionSeleccion, CAMPEONES } from './servidor-falso.mjs';
 
 let fallos = 0, total = 0;
 const ok = (n, c, d = '') => { total++; console.log(c ? `  ok    ${n}` : `  FALLA ${n}${d ? ' — ' + d : ''}`); if (!c) fallos++; };
@@ -130,6 +132,48 @@ console.log('\nel avisador completo');
   try { av.avisar('aceptada', { tras: 1, aceptadas: 1 }); } catch { exploto = true; }
   await dormir(300);
   ok('avisar() no lanza aunque el receptor esté muerto', exploto === false);
+}
+
+console.log('\nlos avisos de la selección de campeones');
+{
+  const catalogo = new Map(CAMPEONES.filter((c) => c.id > 0).map((c) => [c.id, c.name]));
+  const r = resumen(sesionSeleccion({ turno: 'pick', segundos: 9 }), catalogo);
+
+  const m = armarMensaje('tuTurnoPick', r);
+  ok('el mensaje del turno usa el texto de la selección',
+     m.titulo === 'Te toca PICKEAR' && /9 s/.test(m.texto), JSON.stringify(m.titulo));
+  ok('viaja lo que un atajo necesita para decidir',
+     m.evento === 'tuTurnoPick' && m.segundos === 9 && m.tipoTurno === 'pick' && m.miPosicion === 'ADC',
+     JSON.stringify(m));
+  ok('pero no los dos equipos enteros', m.equipo === undefined && m.baneos === undefined,
+     Object.keys(m).join(','));
+
+  recibidos.length = 0;
+  await CANALES.webhook.enviar(base + '/wh', m);
+  const cuerpo = JSON.parse(recibidos.at(-1).cuerpo);
+  ok('el webhook lo recibe listo para ramificar',
+     cuerpo.evento === 'tuTurnoPick' && cuerpo.miTurno === true, recibidos.at(-1).cuerpo);
+
+  const entrada = armarMensaje('entraste', resumen(sesionSeleccion({ segundos: 27 }), catalogo));
+  ok('el aviso de entrar no repite el título de "partida aceptada"',
+     entrada.titulo !== armarMensaje('aceptada', { tras: 1 }).titulo, entrada.titulo);
+
+  /* Se pueden apagar los de la selección sin apagar el que más importa. */
+  recibidos.length = 0;
+  const cfg = { canal: 'webhook', destino: base + '/hook', seleccion: false };
+  const av = crearAvisador(() => cfg);
+  av.avisar('tuTurnoPick', r);
+  av.avisar('aceptada', { tras: 100, aceptadas: 1 });
+  await dormir(300);
+  ok('apagar los avisos de selección no apaga el de aceptada',
+     recibidos.length === 1 && JSON.parse(recibidos[0].cuerpo).evento === 'aceptada',
+     JSON.stringify(recibidos.map((x) => JSON.parse(x.cuerpo).evento)));
+
+  recibidos.length = 0;
+  cfg.seleccion = true;
+  av.avisar('tuTurnoPick', r);
+  await dormir(300);
+  ok('y encendidos, llegan', recibidos.length === 1, `pedidos=${recibidos.length}`);
 }
 
 await new Promise((r) => receptor.close(r));

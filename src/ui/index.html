@@ -32,6 +32,19 @@
     <button class="b b-grande" id="pausa">Pausar</button>
   </section>
 
+  <section class="tarjeta seleccion" id="seleccion" hidden>
+    <div class="sel-cab">
+      <div class="sel-txt">
+        <span class="fase-rotulo">Selección de campeones</span>
+        <strong id="sel-turno" aria-live="polite">—</strong>
+        <span class="fase-sub" id="sel-detalle"></span>
+      </div>
+      <div class="reloj" id="sel-reloj"><span id="sel-seg">—</span><small>s</small></div>
+    </div>
+    <ul class="equipo" id="sel-equipo"></ul>
+    <p class="baneos" id="sel-baneos"></p>
+  </section>
+
   <section class="tarjeta">
     <h2>Cuánto esperar antes de aceptar</h2>
     <p class="ayuda">Aceptar en cero milisegundos no te deja arrepentirte si te levantaste, y es la señal más obvia de que hay algo automático. El valor real varía un poco en cada partida.</p>
@@ -61,6 +74,10 @@
       <input type="text" id="destino" placeholder="—" autocomplete="off" spellcheck="false">
       <span></span>
     </div>
+    <label class="casilla" for="avisar-seleccion">
+      <input type="checkbox" id="avisar-seleccion" checked>
+      <span>Avisarme también durante la selección: cuándo me toca elegir y cuánto queda.</span>
+    </label>
     <div class="acciones-aviso">
       <button class="b" id="guardar-aviso">Guardar</button>
       <button class="b" id="probar-aviso">Probar ahora</button>

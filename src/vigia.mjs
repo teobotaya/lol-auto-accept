@@ -14,8 +14,12 @@
       firma más obvia de que hay algo automático del otro lado.
    --------------------------------------------------------------------------- */
 import { EventEmitter } from 'node:events';
+import { resumen } from './champselect.mjs';
 
 export const FASES_EN_COLA = new Set(['Matchmaking', 'ReadyCheck', 'Lobby']);
+/* Cuando la partida está por empezar hay que mirar rápido igual: la selección
+   de campeones es donde el usuario tiene que llegar a tiempo. */
+export const FASES_ATENTO = new Set([...FASES_EN_COLA, 'ChampSelect']);
 
 export class Vigia extends EventEmitter {
   constructor(lcu, ajustes = {}) {
@@ -26,10 +30,16 @@ export class Vigia extends EventEmitter {
       variacionMs: 400,     // ±, para que no sea siempre el mismo número
       ritmoLento: 2000,     // sondeo fuera de cola
       ritmoRapido: 300,     // sondeo en cola
+      ritmoSeleccion: 1000, // sondeo en selección de campeones
+      avisarUltimos: 10,    // segundos restantes para el último aviso
       activo: true,
       ...ajustes,
     };
-    this.estado = { fase: 'desconocida', enCola: false, aceptando: false, restante: 0 };
+    this.estado = { fase: 'desconocida', enCola: false, aceptando: false, restante: 0, seleccion: null };
+    /* Un aviso por momento y por partida: si se repitiera en cada sondeo, el
+       teléfono vibraría una vez por segundo. */
+    this._avisados = new Set();
+    this._campeones = null;
     this.cuenta = { aceptadas: 0, canceladas: 0, errores: 0, desde: Date.now() };
     this.corriendo = false;
     this._cancelar = null;
@@ -85,13 +95,30 @@ export class Vigia extends EventEmitter {
     this.estado.fase = String(fase).replace(/"/g, '');
     this.estado.enCola = FASES_EN_COLA.has(this.estado.fase);
 
+    if (this.estado.fase === 'ChampSelect') {
+      await this._selección();
+      return this.ajustes.ritmoSeleccion;
+    }
+    /* Al salir de la selección se limpia la memoria de avisos: la próxima
+       partida tiene que poder avisar de nuevo. */
+    if (this.estado.seleccion) {
+      const eraSeleccion = this.estado.seleccion;
+      this.estado.seleccion = null;
+      if (this.estado.fase === 'InProgress' || this.estado.fase === 'GameStart') {
+        this._avisar('empezo', eraSeleccion);
+      } else if (!this._avisados.has('empezo')) {
+        this._avisar('cayo', eraSeleccion);
+      }
+      this._avisados.clear();
+    }
+
     if (this.estado.fase !== 'ReadyCheck') {
       this.estado.restante = 0;
       if (this._cancelar) this.cancelarAceptacion('la partida se cayó antes de aceptar');
       /* La cancelación vale para esta partida, no para siempre: al salir del
          ready check se olvida, si no la app quedaría muda hasta reiniciarla. */
       this._cancelado = false;
-      return this.estado.enCola ? this.ajustes.ritmoRapido : this.ajustes.ritmoLento;
+      return FASES_ATENTO.has(this.estado.fase) ? this.ajustes.ritmoRapido : this.ajustes.ritmoLento;
     }
 
     const rc = await this.lcu.readyCheck();
@@ -107,6 +134,35 @@ export class Vigia extends EventEmitter {
 
     this._programarAceptacion();
     return this.ajustes.ritmoRapido;
+  }
+
+  _avisar(momento, datos) {
+    if (this._avisados.has(momento)) return;
+    this._avisados.add(momento);
+    this.emit('momento', { momento, datos });
+  }
+
+  async _selección() {
+    if (!this._campeones && this.lcu.campeones) {
+      /* Si el catálogo no viene, se sigue igual con los ids: mejor un aviso
+         que diga "campeón 103" que ningún aviso. */
+      this._campeones = await this.lcu.campeones().catch(() => new Map());
+    }
+    let sesion = null;
+    try { sesion = await this.lcu.champSelect(); }
+    catch (e) { if (e.codigo !== 404) throw e; }
+
+    const r = resumen(sesion, this._campeones ?? new Map());
+    this.estado.seleccion = r;
+    if (!r) return;
+
+    this._avisar('entraste', r);
+    if (r.miTurno && r.tipoTurno === 'ban') this._avisar('tuTurnoBan', r);
+    if (r.miTurno && r.tipoTurno === 'pick') this._avisar('tuTurnoPick', r);
+    if (r.miTurno && r.tipoTurno === 'pick' && !r.yaPickee &&
+        r.segundos > 0 && r.segundos <= this.ajustes.avisarUltimos) {
+      this._avisar('ultimoAviso', r);
+    }
   }
 
   _programarAceptacion() {

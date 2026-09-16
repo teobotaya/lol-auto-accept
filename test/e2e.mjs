@@ -125,6 +125,60 @@ try {
   ok('el aviso dice que fue una aceptación y cuántas van',
      cuerpo.evento === 'aceptada' && cuerpo.aceptadas === 2, JSON.stringify(cuerpo));
 
+  /* Y ahora el motivo de todo esto: estar abajo, lejos de la computadora, y
+     que el teléfono te diga qué te toca hacer en la selección. */
+  const eventos = (n) => avisos.map((a) => JSON.parse(a.cuerpo)).filter((x) => x.evento === n);
+
+  avisos.length = 0;
+  falso.entrarSeleccion({ segundos: 27 });
+  await dormir(2400);
+  ok('entrar a la selección manda su propio aviso', eventos('entraste').length === 1,
+     JSON.stringify(avisos.map((a) => JSON.parse(a.cuerpo).evento)));
+  const entrada = eventos('entraste')[0] ?? {};
+  ok('el aviso dice la posición y cuántos picks faltan',
+     entrada.miPosicion === 'ADC' && /4 picks antes/.test(entrada.texto ?? ''), entrada.texto);
+  e = await api('/api/estado');
+  ok('el panel también muestra la selección', e.seleccion?.miPosicion === 'ADC',
+     JSON.stringify(e.seleccion?.fase));
+  ok('y sabe cuántos segundos quedan', e.seleccion?.segundos > 0 && e.seleccion.segundos <= 27,
+     String(e.seleccion?.segundos));
+
+  falso.entrarSeleccion({ turno: 'pick', segundos: 22 });
+  await dormir(2400);
+  ok('cuando toca pickear, el teléfono se entera', eventos('tuTurnoPick').length === 1,
+     JSON.stringify(avisos.map((a) => JSON.parse(a.cuerpo).evento)));
+  ok('con 22 s todavía no apura', eventos('ultimoAviso').length === 0);
+  ok('el aviso trae los datos para un atajo, no solo texto',
+     eventos('tuTurnoPick')[0]?.miTurno === true && eventos('tuTurnoPick')[0]?.tipoTurno === 'pick',
+     JSON.stringify(eventos('tuTurnoPick')[0]));
+
+  falso.entrarSeleccion({ turno: 'pick', segundos: 7 });
+  await dormir(2400);
+  ok('con el reloj en rojo avisa una última vez', eventos('ultimoAviso').length === 1,
+     JSON.stringify(avisos.map((a) => JSON.parse(a.cuerpo).evento)));
+  ok('y ninguno de los avisos se repitió',
+     avisos.length === 3, JSON.stringify(avisos.map((a) => JSON.parse(a.cuerpo).evento)));
+
+  falso.empezarPartida();
+  await dormir(2400);
+  ok('cuando arranca la partida, lo dice y cierra el ciclo', eventos('empezo').length === 1,
+     JSON.stringify(avisos.map((a) => JSON.parse(a.cuerpo).evento)));
+  e = await api('/api/estado');
+  ok('y el panel ya no muestra una selección que terminó', !e.seleccion, JSON.stringify(e.seleccion));
+
+  /* Se pueden apagar solo los de la selección. */
+  await api('/api/avisos?seleccion=no', 'POST');
+  avisos.length = 0;
+  falso.entrarSeleccion({ segundos: 30 });
+  await dormir(2400);
+  ok('apagados, los avisos de selección no salen', avisos.length === 0,
+     JSON.stringify(avisos.map((a) => JSON.parse(a.cuerpo).evento)));
+  ok('pero el panel los sigue mostrando igual',
+     (await api('/api/estado')).seleccion?.miPosicion === 'ADC');
+  falso.caerse();
+  await dormir(1600);
+  await api('/api/avisos?seleccion=si', 'POST');
+
   /* Con el receptor caído la partida se tiene que aceptar igual. */
   await new Promise((r) => receptor.close(r));
   falso.estado.fase = 'Matchmaking'; falso.estado.readyCheck = null;

@@ -93,4 +93,17 @@ export class Lcu {
   aceptar() { return this.pedir('POST', '/lol-matchmaking/v1/ready-check/accept'); }
   fase() { return this.pedir('GET', '/lol-gameflow/v1/gameflow-phase'); }
   yo() { return this.pedir('GET', '/lol-summoner/v1/current-summoner'); }
+
+  /* La sesión de selección de campeones: acciones, equipos y el reloj. */
+  champSelect() { return this.pedir('GET', '/lol-champ-select/v1/session'); }
+
+  /* El catálogo de campeones lo sirve el propio cliente, así que los nombres
+     no dependen de internet ni de Data Dragon: si League está abierto, están.
+     Se pide una sola vez por sesión, que no cambia entre partidas. */
+  async campeones() {
+    if (this._campeones) return this._campeones;
+    const lista = await this.pedir('GET', '/lol-game-data/assets/v1/champion-summary.json');
+    this._campeones = new Map((lista ?? []).filter((c) => c.id > 0).map((c) => [c.id, c.name]));
+    return this._campeones;
+  }
 }

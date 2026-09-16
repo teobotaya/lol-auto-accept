@@ -14,6 +14,7 @@
    una aceptación. La partida importa; la notificación es un lujo.
    --------------------------------------------------------------------------- */
 import { execFile } from 'node:child_process';
+import { armarAviso, MOMENTOS } from './champselect.mjs';
 
 const TIEMPO_LIMITE = 4000;
 
@@ -127,10 +128,26 @@ async function peticion(url, opciones) {
   }
 }
 
+/* Los momentos de la selección son eventos propios y se pueden apagar sin
+   apagar el aviso de "partida aceptada", que es el que nadie quiere perderse. */
+export const MOMENTOS_SELECCION = new Set(Object.keys(MOMENTOS));
+
+/* Del resumen de la selección viaja solo esto. El objeto entero trae los dos
+   equipos y no hace falta: un webhook que enciende una luz o un atajo que lee
+   en voz alta necesita saber si te toca y cuánto queda, nada más. */
+const CAMPOS = ['fase', 'segundos', 'miTurno', 'tipoTurno', 'miPosicion', 'miCampeon', 'turnosAntes'];
+
 export function armarMensaje(evento, datos = {}) {
   if (evento === 'prueba') {
     return { titulo: 'Auto Accept anda', texto: 'Si ves esto en el iPhone, los avisos están funcionando.',
              etiqueta: 'white_check_mark', evento };
+  }
+  /* Los textos de la selección viven en champselect.mjs, al lado de los datos
+     que describen: acá solo se los envuelve para mandarlos. */
+  if (MOMENTOS_SELECCION.has(evento)) {
+    const aviso = armarAviso(evento, datos);
+    for (const c of CAMPOS) if (datos?.[c] !== undefined) aviso[c] = datos[c];
+    return aviso;
   }
   const n = datos.aceptadas ?? 0;
   return {
@@ -149,6 +166,9 @@ export function crearAvisador(leerConfig, anotar = () => {}) {
     const cfg = leerConfig();
     const canal = CANALES[cfg.canal] ?? CANALES.ninguno;
     if (cfg.canal === 'ninguno') return { ok: true, detalle: 'canal apagado' };
+    if (cfg.seleccion === false && MOMENTOS_SELECCION.has(evento)) {
+      return { ok: true, detalle: 'avisos de selección apagados' };
+    }
     if (!cfg.destino) return { ok: false, detalle: 'falta el destino' };
 
     const msg = armarMensaje(evento, datos);

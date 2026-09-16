@@ -48,9 +48,68 @@
       $('#variacion').value = d.ajustes.variacionMs;
       $('#variacion-v').textContent = `± ${d.ajustes.variacionMs} ms`;
     }
+    pintarSeleccion(d.seleccion);
+
     $('#bitacora').innerHTML = (d.bitacora ?? []).map((l) =>
       `<li data-t="${esc(l.tipo)}"><span class="hora">${hora(l.t)}</span><span>${esc(l.texto)}</span></li>`).join('');
   }
+
+
+  /* ------------------------------------------ selección de campeones
+     El servidor sondea al cliente una vez por segundo; el panel se refresca
+     cada 700 ms. Si el número se pintara tal cual llega, el reloj daría
+     saltos. Por eso se ancla el último valor del servidor y se descuenta
+     local hasta que llegue uno nuevo: el contador baja parejo y nunca miente
+     más de un segundo. */
+  let reloj = null;
+  function pintarSeleccion(s) {
+    const caja = $('#seleccion');
+    caja.hidden = !s;
+    if (!s) { reloj = null; return; }
+
+    caja.dataset.turno = String(!!s.miTurno);
+    $('#sel-turno').textContent =
+        s.miTurno && s.tipoTurno === 'pick' ? 'Te toca PICKEAR'
+      : s.miTurno && s.tipoTurno === 'ban' ? 'Te toca BANEAR'
+      : s.yaPickee ? `Ya elegiste${s.miCampeon ? `: ${s.miCampeon}` : ''}`
+      : s.turnosAntes === 0 ? 'Pickeás vos primero'
+      : s.turnosAntes > 0 ? `Faltan ${s.turnosAntes} ${s.turnosAntes === 1 ? 'pick' : 'picks'} para el tuyo`
+      : 'Esperando tu turno';
+
+    $('#sel-detalle').textContent = [
+      s.miPosicion ? `Vas ${s.miPosicion}` : null,
+      s.yaBanee ? 'ya baneaste' : null,
+    ].filter(Boolean).join(' · ') || 'sin posición asignada';
+
+    $('#sel-equipo').innerHTML = (s.equipo ?? []).map((j) => `
+      <li data-yo="${j.esYo}" data-listo="${!!j.campeon}">
+        <span class="pos">${esc(j.posicion ?? '—')}</span>
+        <span class="camp">${esc(j.campeon ?? 'sin elegir')}</span>
+        ${j.esYo ? '<span class="pos" style="width:auto;margin-left:auto">vos</span>' : ''}
+      </li>`).join('');
+
+    $('#sel-baneos').textContent = s.baneos?.length ? `Baneados: ${s.baneos.join(', ')}` : '';
+
+    if (s.infinito) { reloj = null; $('#sel-seg').textContent = '∞'; $('#sel-reloj').dataset.apremio = 'false'; return; }
+    const ahora = Date.now();
+    if (!reloj) { reloj = { origen: s.segundos, desde: ahora }; }
+    else {
+      /* Un número que sube es lo único que se ve roto de verdad. Si el valor
+         del servidor es menor, se adopta; si es un poco mayor, es el desfasaje
+         normal entre sondeos y se ignora; si es mucho mayor, empezó otra fase
+         y hay que volver a anclar. */
+      const mostrado = Math.max(0, reloj.origen - Math.floor((ahora - reloj.desde) / 1000));
+      if (s.segundos < mostrado || s.segundos > mostrado + 3) reloj = { origen: s.segundos, desde: ahora };
+    }
+    tictac();
+  }
+  function tictac() {
+    if (!reloj || $('#seleccion').hidden) return;
+    const n = Math.max(0, reloj.origen - Math.floor((Date.now() - reloj.desde) / 1000));
+    $('#sel-seg').textContent = n;
+    $('#sel-reloj').dataset.apremio = String(n <= 10);
+  }
+  setInterval(tictac, 250);
 
   /* ------------------------------------------------------------ avisos */
   let canales = [];
@@ -66,6 +125,7 @@
        recortado como marcador, y solo se manda si escribís uno nuevo. */
     $('#destino').value = '';
     $('#destino').placeholder = d.actual.destinoVisible || '—';
+    $('#avisar-seleccion').checked = d.actual.seleccion !== false;
     pintarCanal();
   }
   function pintarCanal() {
@@ -76,7 +136,8 @@
   }
   $('#canal').addEventListener('change', pintarCanal);
   $('#guardar-aviso').addEventListener('click', async () => {
-    const p = new URLSearchParams({ canal: $('#canal').value });
+    const p = new URLSearchParams({ canal: $('#canal').value,
+                                    seleccion: $('#avisar-seleccion').checked ? 'si' : 'no' });
     if ($('#destino').value.trim()) p.set('destino', $('#destino').value.trim());
     await fetch('api/avisos?' + p, { method: 'POST' });
     mostrarResultado(true, 'guardado');

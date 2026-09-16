@@ -11,9 +11,11 @@ export const POR_DEFECTO = {
   variacionMs: 400,
   ritmoLento: 2000,
   ritmoRapido: 300,
+  ritmoSeleccion: 1000,
+  avisarUltimos: 10,
   activo: true,
   puertoPanel: 8123,
-  avisos: { canal: 'ninguno', destino: '' },
+  avisos: { canal: 'ninguno', destino: '', seleccion: true },
 };
 
 const CANALES_VALIDOS = new Set(['ninguno', 'ntfy', 'pushcut', 'webhook', 'imessage']);
@@ -31,12 +33,19 @@ export function sanear(entrada = {}) {
     variacionMs: entero(entrada.variacionMs, 0, 3000, POR_DEFECTO.variacionMs),
     ritmoLento: entero(entrada.ritmoLento, 500, 10000, POR_DEFECTO.ritmoLento),
     ritmoRapido: entero(entrada.ritmoRapido, 100, 2000, POR_DEFECTO.ritmoRapido),
+    /* La selección dura minutos, no diez segundos: sondearla cada segundo
+       alcanza de sobra y no llena el log del cliente de pedidos. */
+    ritmoSeleccion: entero(entrada.ritmoSeleccion, 300, 5000, POR_DEFECTO.ritmoSeleccion),
+    avisarUltimos: entero(entrada.avisarUltimos, 0, 30, POR_DEFECTO.avisarUltimos),
     activo: entrada.activo !== false,
     puertoPanel: entero(entrada.puertoPanel, 1024, 65535, POR_DEFECTO.puertoPanel),
     avisos: {
       /* Un canal desconocido apaga los avisos en vez de romper el arranque. */
       canal: CANALES_VALIDOS.has(entrada.avisos?.canal) ? entrada.avisos.canal : 'ninguno',
       destino: String(entrada.avisos?.destino ?? '').trim().slice(0, 500),
+      /* Los avisos de la selección se pueden apagar solos, sin perder el de
+         "partida aceptada", que es el que de verdad no querés perderte. */
+      seleccion: entrada.avisos?.seleccion !== false,
     },
   };
 }

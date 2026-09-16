@@ -14,7 +14,7 @@ import { descubrir } from './descubrir.mjs';
 import { Lcu } from './lcu.mjs';
 import { Vigia } from './vigia.mjs';
 import * as ajustes from './ajustes.mjs';
-import { crearAvisador, CANALES, enmascarar } from './avisos.mjs';
+import { crearAvisador, CANALES, enmascarar, armarMensaje } from './avisos.mjs';
 
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
                 '.js': 'text/javascript; charset=utf-8' };
@@ -62,6 +62,13 @@ async function conectar() {
     avisador.avisar('aceptada', { tras, aceptadas: vigia.cuenta.aceptadas });
   });
   vigia.on('cancelado', ({ motivo }) => anotar('aviso', `no acepté: ${motivo}`));
+  /* La selección de campeones: el vigía decide CUÁNDO hay algo que contar y
+     acá se lo cuenta al teléfono. Un momento, un aviso, una vez por partida. */
+  vigia.on('momento', ({ momento, datos }) => {
+    const m = armarMensaje(momento, datos);
+    anotar(momento === 'cayo' ? 'aviso' : 'cola', `${m.titulo}: ${m.texto}`);
+    avisador.avisar(momento, datos);
+  });
   vigia.on('problema', ({ mensaje }) => anotar('error', mensaje));
   vigia.arrancar();
   return true;
@@ -110,19 +117,24 @@ const servidor = createServer((req, res) => {
         destinoRotulo: c.destinoRotulo ?? null,
         disponible: !c.soloEn || c.soloEn === process.platform,
       })),
-      actual: { ...config.avisos, destinoVisible: enmascarar(config.avisos.destino) },
+      actual: { ...config.avisos, destino: undefined, destinoVisible: enmascarar(config.avisos.destino) },
     });
   }
   if (url.pathname === '/api/avisos' && req.method === 'POST') {
+    const bandera = url.searchParams.get('seleccion');
     const nuevo = ajustes.sanear({ ...config, avisos: {
       canal: url.searchParams.get('canal') ?? config.avisos.canal,
       destino: url.searchParams.get('destino') ?? config.avisos.destino,
+      seleccion: bandera === null ? config.avisos.seleccion : bandera !== 'no',
     } });
     config.avisos = nuevo.avisos;
     ajustes.guardar(config);
     anotar('aviso', `avisos por ${config.avisos.canal}` +
-      (config.avisos.destino ? ` → ${enmascarar(config.avisos.destino)}` : ''));
-    return json(res, config.avisos);
+      (config.avisos.destino ? ` → ${enmascarar(config.avisos.destino)}` : '') +
+      (config.avisos.seleccion ? ' · también en selección' : ' · solo al aceptar'));
+    /* El destino no vuelve en la respuesta: puede llevar un secreto adentro. */
+    return json(res, { ...config.avisos, destino: undefined,
+                       destinoVisible: enmascarar(config.avisos.destino) });
   }
   if (url.pathname === '/api/probar-aviso' && req.method === 'POST') {
     return avisador.probar().then((r) => json(res, r));

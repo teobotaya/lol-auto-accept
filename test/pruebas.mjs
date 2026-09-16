@@ -76,7 +76,7 @@ const puerto = await falso.escuchar();
 console.log('\nel vigía, de punta a punta');
 {
   const lcu = new Lcu({ puerto, clave: falso.clave });
-  const vigia = new Vigia(lcu, { retardoMs: 300, variacionMs: 50, ritmoLento: 120, ritmoRapido: 60 });
+  const vigia = new Vigia(lcu, { retardoMs: 300, variacionMs: 50, ritmoLento: 120, ritmoRapido: 60, ritmoSeleccion: 60 });
   const eventos = [];
   for (const e of ['aceptando', 'aceptado', 'cancelado', 'problema']) vigia.on(e, (d) => eventos.push([e, d]));
   vigia.arrancar();
