@@ -290,6 +290,15 @@ try {
   ok('en mi turno de ban, planear lo marca enseguida',
      ban.ok && marcas().length === antesDelBan + 1 && marcas().at(-1).accion === 102 && marcas().at(-1).championId === 22,
      JSON.stringify(marcas().slice(antesDelBan)));
+  /* La carrera con el sondeo, sin depender del reloj: una sesión pedida
+     antes de que el cliente confirmara la marca no dispara nada. */
+  const vieja = (banMarcadoId) => ({ ...vigia.estado.seleccion, miTurno: true, tipoTurno: 'ban', banId: 102, banMarcadoId });
+  const patchesAntes = falso.estado.pedidos.filter((x) => x.startsWith('PATCH')).length;
+  await vigia._aplicarPlan(vieja(null), 1);
+  await vigia._aplicarPlan(vieja(53), 1);
+  ok('una lectura vieja ni vuelve a marcar ni hace soltar el plan',
+     falso.estado.pedidos.filter((x) => x.startsWith('PATCH')).length === patchesAntes && vigia.plan.ban === 22,
+     JSON.stringify({ plan: vigia.plan }));
   const baneo = await vigia.fijar('ban');
   ok('y fijar lo banea', baneo.ok && mia(102).completed && mia(102).championId === 22, JSON.stringify(baneo));
   ok('fijar un pick en turno de ban se rechaza', (await vigia.fijar('pick')).ok === false);

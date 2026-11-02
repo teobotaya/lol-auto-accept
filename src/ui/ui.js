@@ -147,14 +147,16 @@
      Dos casillas, Banear y Pickear. Lo que elegís queda marcado en el
      cliente; fijarlo es otro paso y lleva dos toques. */
   const icono = (id) => `api/icono/${Number(id)}`;
-  function pintarSlot(tipo, { visible, hecho, hechoNombre, elegido }) {
+  function pintarSlot(tipo, { visible, hecho, hechoNombre, hechoId, elegido }) {
     const el = $(`#slot-${tipo}`);
     el.hidden = !visible;
     if (!visible) return;
     el.disabled = !!hecho;
     el.dataset.elegido = String(!!(elegido || hecho));
     const img = el.querySelector('img');
-    const id = elegido?.id ?? null;
+    /* Hecho, muestra la cara de lo que baneaste o elegiste; si no, la de lo
+       que tenés marcado. */
+    const id = hecho ? (hechoId ?? null) : (elegido?.id ?? null);
     if (id && img.dataset.id !== String(id)) { img.src = icono(id); img.dataset.id = String(id); }
     img.hidden = !id;
     el.querySelector('small').textContent = hecho ? (tipo === 'ban' ? 'Baneaste' : 'Elegiste')
@@ -166,9 +168,9 @@
        elegiste en la PC, el teléfono lo ve igual. */
     const enCliente = (id, nombre) => (id ? { id, nombre } : null);
     pintarSlot('ban', { visible: !!(s.banId || s.yaBanee), hecho: s.yaBanee && !s.banId,
-                        hechoNombre: s.miBan, elegido: plan.ban ?? enCliente(s.banMarcadoId, s.banMarcado) });
+                        hechoNombre: s.miBan, hechoId: s.miBanId, elegido: plan.ban ?? enCliente(s.banMarcadoId, s.banMarcado) });
     pintarSlot('pick', { visible: !!(s.pickId || s.yaPickee), hecho: s.yaPickee,
-                         hechoNombre: s.miCampeon, elegido: plan.pick ?? enCliente(s.pickMarcadoId, s.pickMarcado) });
+                         hechoNombre: s.miCampeon, hechoId: s.miPickId, elegido: plan.pick ?? enCliente(s.pickMarcadoId, s.pickMarcado) });
     $('#jugada').hidden = $('#slot-ban').hidden && $('#slot-pick').hidden;
 
     /* El botón grande aparece solo en tu turno, y dice exactamente qué va a

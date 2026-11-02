@@ -2,3 +2,4 @@ node_modules/
 .DS_Store
 *.log
 riotgames.pem
+.claude/settings.local.json

@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "demo"
+      ],
+      "port": 8125
+    },
+    {
+      "name": "instalado",
+      "url": "http://127.0.0.1:8123",
+      "port": 8123
+    }
+  ]
+}

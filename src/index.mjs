@@ -422,8 +422,12 @@ function escuchar() {
   servidor.closeAllConnections();
 }
 servidor.on('error', (e) => {
+  /* Casi siempre es la copia instalada, que arranca sola al iniciar sesión:
+     el mensaje dice dónde buscarla y cómo probar sin pisarla. */
   anotar('error', e.code === 'EADDRINUSE'
-    ? `el puerto ${config.puertoPanel} está ocupado: ¿ya hay otro Auto Accept abierto?`
+    ? `el puerto ${config.puertoPanel} está ocupado: ¿ya hay otro Auto Accept abierto? ` +
+      'La copia instalada arranca sola y usa http://127.0.0.1:8123; ' +
+      'para probar sin League y sin tocarla: npm run demo (puerto 8125)'
     : `el panel no pudo arrancar: ${e.message}`);
   if (primeraVez) process.exitCode = 1;
 });

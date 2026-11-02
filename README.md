@@ -32,6 +32,10 @@ Lo que sí puedo decirte es que este proyecto se mantiene deliberadamente del
 lado prolijo de la línea: no inyecta entradas, no modifica el juego, y no hace
 nada dentro de la partida.
 
+Elegir ban y pick desde el teléfono va un paso más allá que aceptar la cola,
+y cae en la misma zona gris. Por eso la app nunca fija un campeón sola: lo
+marca, como si pasaras el mouse por encima, y fijarlo siempre lo confirmás vos.
+
 ## Cómo se usa
 
 1. Instalá [Node.js](https://nodejs.org) (versión 20 o superior).
@@ -63,12 +67,27 @@ puede leerlos sin Acceso total al disco: fallaría sin decir nada. Para
 actualizar, se vuelve a correr `npm run instalar`. El registro queda en
 `~/Library/Logs/LoL Auto Accept.log`.
 
+### Probarlo sin League
+
+```bash
+npm run demo
+```
+
+Abre el panel en `http://127.0.0.1:8125` con la app de verdad hablando con el
+cliente simulado de las pruebas. La partida se juega sola —cola, partida
+encontrada, aceptación, selección con planificación, bans y picks, partida— y
+en la selección te espera para que banees y pickees desde el panel. Usa una
+carpeta de ajustes descartable y otro puerto, así que convive con la copia
+instalada, no le habla a tu League y no manda avisos. Los campeones y sus caras
+salen de Data Dragon, el CDN público de Riot; sin internet sigue con diez.
+
 ## Lo que hace el panel
 
 | | |
 |---|---|
 | **Estado** | en qué fase está el cliente y, si saltó la partida, los segundos que quedan de los doce |
 | **Selección** | tu posición, si te toca elegir, cuánto queda y qué agarró tu equipo |
+| **Banear / Pickear** | elegís desde el panel; queda marcado en el cliente y lo fijás con dos toques |
 | **Retardo** | cuánto espera antes de aceptar, con una variación al azar |
 | **Aceptar ya** | acepta sin esperar el retardo; en pausa, es la forma de aceptar desde el panel |
 | **Cancelar esta** | corta la aceptación en curso, para esta partida |
@@ -148,6 +167,38 @@ tuviera la vieja. Y nada de esto sale de tu red: fuera de casa el panel no se ve
 Si el iPhone no llega, revisá que esté en el mismo Wi-Fi que la Mac y que el
 firewall de macOS no esté bloqueando `node` (Ajustes del Sistema → Red →
 Firewall).
+
+### Banear y pickear desde el teléfono
+
+En la selección, el panel muestra dos casillas: **Banear** y **Pickear**.
+Tocás una y se abre una hoja con un buscador y las caras de los campeones que
+de verdad podés usar: los tuyos (o los gratis de la semana), sin los que ya
+agarró o baneó alguien. Lo que elegís:
+
+- **se marca** en el cliente cuando el cliente lo permite: el pick desde la
+  planificación —tu equipo ya ve qué vas a jugar—, el ban cuando llega tu
+  turno. Es lo mismo que pasar el mouse por encima: todavía se puede cambiar;
+- **se fija** solo cuando vos lo confirmás. En tu turno aparece un botón
+  grande, *Banear Zed* o *Fijar Ahri*; el primer toque lo pone en rojo y el
+  segundo lo fija. Un campeón fijado no tiene vuelta, y un toque sin querer no
+  te puede dejar con uno que no querías.
+
+El aviso de tu turno lo cuenta: *"Te toca PICKEAR. Quedan 24 s. Ya está
+marcado Caitlyn: fijalo desde el panel."* Con el panel abierto a la red,
+tocarlo te lleva directo al botón.
+
+Tres reglas para que la app y vos no se pisen:
+
+- **Si lo cambiás en la PC, gana la PC.** La app suelta su plan y el panel
+  muestra lo que elegiste allá.
+- **Si la marca desaparece** (el cliente a veces la limpia al empezar el
+  turno), la app la vuelve a poner.
+- **Si el cliente la rechaza** —el campeón lo agarró otro—, la app lo dice una
+  vez y no insiste; *Fijar* explica por qué no se puede.
+
+Usa exactamente la misma llamada que la interfaz de League:
+`PATCH /lol-champ-select/v1/session/actions/{id}` con `championId` y
+`completed`, que está en el propio código del cliente.
 
 ### Qué te avisa, y por qué esos momentos y no otros
 
@@ -251,8 +302,8 @@ Si tenés el juego en un lugar raro: `LOCKFILE=/ruta/al/lockfile npm start`.
 npm test
 ```
 
-**211 pruebas**: 45 de unidad e integración, 43 de avisos, 64 de selección de
-campeones y 59 de punta a punta. Corren contra un LCU falso que reproduce lo que
+**251 pruebas**: 45 de unidad e integración, 43 de avisos, 93 de selección de
+campeones y 70 de punta a punta. Corren contra un LCU falso que reproduce lo que
 importa —el certificado autofirmado emitido por Riot, la autenticación básica,
 la fase del gameflow, el ready-check con su contador y la sesión de selección
 con sus acciones y su reloj— y un receptor de notificaciones falso que captura
@@ -290,6 +341,12 @@ los avisos ni la llave; y el cliente que se cierra y vuelve con otro puerto y
 otra clave, que la app tiene que encontrar sola y seguir aceptando sin perder
 la cuenta.
 
+Las de elegir campeón cubren lo que sale mal en la vida real: planear algo
+baneado, fijar fuera de tu turno, cambiar el campeón en la PC, que la marca
+desaparezca, que el cliente la rechace, y la carrera entre el sondeo y la
+marca —una sesión leída un instante antes de marcar no puede hacer marcar dos
+veces ni soltar el plan—.
+
 Corren en Windows, macOS y Linux en cada push.
 
 ### Contra un cliente de verdad
@@ -326,6 +383,7 @@ src/avisos.mjs      los canales de notificación, con secretos enmascarados
 src/ajustes.mjs     configuración en ~/.lol-auto-accept/ajustes.json
 src/index.mjs       arranque, reconexión y el panel (local, o en la red con llave)
 scripts/instalar-mac.sh   copia, LaunchAgent y acceso en ~/Applications
+scripts/demo.mjs          la app contra el cliente simulado, sin tocar nada tuyo
 test/servidor-falso.mjs   un LCU simulado, con TLS y auth de verdad
 ```
 

@@ -225,6 +225,7 @@ export class Vigia extends EventEmitter {
       this._campeones = await this.lcu.campeones().catch(() => new Map());
     }
     let sesion = null;
+    const pedida = Date.now();
     try { sesion = await this.lcu.champSelect(); }
     catch (e) { if (e.codigo !== 404) throw e; }
 
@@ -233,7 +234,8 @@ export class Vigia extends EventEmitter {
        algo y, sobre todo, el cierre de partida no depende de este objeto. */
     if (!r) return;
     this.estado.seleccion = r;
-    await this._aplicarPlan(r);
+    this._pedida = pedida;
+    await this._aplicarPlan(r, pedida);
     /* Después de aplicar, no antes: si lo cambiaste en la PC, el plan se
        soltó recién y el panel tiene que mostrarlo ya. */
     r.planBan = this._nombre(this.plan.ban);
@@ -286,7 +288,7 @@ export class Vigia extends EventEmitter {
       this.estado.seleccion.planBan = this._nombre(this.plan.ban);
       this.estado.seleccion.planPick = this._nombre(this.plan.pick);
     }
-    await this._aplicarPlan(this.estado.seleccion);
+    await this._aplicarPlan(this.estado.seleccion, this._pedida);
     return { ok: true, plan: this.planVisible() };
   }
 
@@ -296,7 +298,7 @@ export class Vigia extends EventEmitter {
        se vuelve a poner, para que el equipo siga viendo tu campeón;
      - en el cliente hay OTRO campeón que no puse yo: lo cambiaste en la PC, y
        gana la PC. El plan se suelta y el panel muestra lo que elegiste allá. */
-  async _aplicarPlan(r) {
+  async _aplicarPlan(r, pedida = 0) {
     if (!r) return;
     const acciones = {
       ban: [r.banId, r.banMarcadoId, r.miTurno && r.tipoTurno === 'ban'],
@@ -306,18 +308,30 @@ export class Vigia extends EventEmitter {
       const [accion, enCliente, sePuede] = acciones[tipo];
       const quiero = this.plan[tipo];
       if (!quiero || !accion) continue;
+      /* El sondeo corre en paralelo y puede traer una sesión pedida antes de
+         que el cliente confirmara la marca: ese vacío no es "desapareció" ni
+         ese campeón viejo es "lo cambiaste en la PC". Se la ignora para esta
+         acción. Una sesión pedida DESPUÉS de la confirmación sí refleja la
+         marca, así que a esa se le cree todo. */
       const puse = this._marcados.get(accion);
-      if (puse && enCliente && enCliente !== puse) {
-        this.plan[tipo] = null;
-        this._marcados.delete(accion);
-        continue;
+      if (puse) {
+        if (!puse.confirmada || pedida <= puse.confirmada) continue;
+        if (enCliente && enCliente !== puse.campeon) {
+          this.plan[tipo] = null;
+          this._marcados.delete(accion);
+          continue;
+        }
       }
       if (!sePuede || enCliente === quiero || this._fallidos.has(`${accion}:${quiero}`)) continue;
-      this._marcados.set(accion, quiero);
-      try { await this.lcu.marcar(accion, quiero); }
-      catch (e) {
+      const marca = { campeon: quiero, confirmada: 0 };
+      this._marcados.set(accion, marca);
+      try {
+        await this.lcu.marcar(accion, quiero);
+        marca.confirmada = Date.now();
+      } catch (e) {
         /* Una vez: si el cliente no lo acepta, insistir cada segundo solo
            llenaría la bitácora. Fijar va a decir por qué. */
+        this._marcados.delete(accion);
         this._fallidos.add(`${accion}:${quiero}`);
         this.emit('problema', { mensaje: `no pude marcar a ${this._nombre(quiero)}: ${e.message}` });
       }

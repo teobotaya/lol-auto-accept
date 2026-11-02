@@ -98,7 +98,9 @@ export function sesionSeleccion({ yo = 2, segundos = 27, turno = null, hechos = 
 
 /* El timer del ready check, como en el cliente real: los segundos que pasaron
    desde que saltó la partida, de 0 a 12. */
-export function servidorFalso({ clave = 'clave-de-prueba' } = {}) {
+/* `campeones` cambia el catálogo (la demo usa el de verdad) e `icono(id)`
+   puede devolver la imagen de cada uno, o una promesa de ella. */
+export function servidorFalso({ clave = 'clave-de-prueba', campeones = CAMPEONES, icono: buscarIcono = null } = {}) {
   const { key, cert, dir } = certificadoFalso();
   const est = {
     fase: 'None',
@@ -135,7 +137,7 @@ export function servidorFalso({ clave = 'clave-de-prueba' } = {}) {
       if (!est.seleccion) return responder(404, { httpStatus: 404, message: 'No active delegate' });
       return responder(200, est.seleccion);
     }
-    if (req.url === '/lol-game-data/assets/v1/champion-summary.json') return responder(200, CAMPEONES);
+    if (req.url === '/lol-game-data/assets/v1/champion-summary.json') return responder(200, campeones);
 
     /* Lo que se puede elegir o banear: todo el catálogo menos lo que ya está
        tomado. est.sinTener simula campeones que el jugador no compró. */
@@ -143,15 +145,18 @@ export function servidorFalso({ clave = 'clave-de-prueba' } = {}) {
       if (!est.seleccion) return responder(404, { message: 'No active delegate' });
       const tomados = new Set(est.seleccion.actions.flat().filter((a) => a.completed).map((a) => a.championId));
       const pick = req.url.includes('pickable');
-      return responder(200, CAMPEONES.map((c) => c.id)
+      return responder(200, campeones.map((c) => c.id)
         .filter((id) => id > 0 && !tomados.has(id) && !(pick && est.sinTener?.includes(id))));
     }
     const icono = /^\/lol-game-data\/assets\/v1\/champion-icons\/(-?\d+)\.png$/.exec(req.url);
     if (icono) {
-      /* est.iconos permite mostrar caras de verdad en una demo; sin eso, un
-         PNG de un píxel alcanza para las pruebas. */
-      res.writeHead(200, { 'content-type': 'image/png' });
-      return res.end(est.iconos?.get(Number(icono[1])) ?? PNG);
+      /* La demo muestra caras de verdad; a las pruebas les alcanza un PNG de
+         un píxel. */
+      const id = Number(icono[1]);
+      return Promise.resolve(buscarIcono?.(id)).catch(() => null).then((datos) => {
+        res.writeHead(200, { 'content-type': 'image/png' });
+        res.end(datos ?? PNG);
+      });
     }
 
     /* Marcar o fijar, como lo hace la interfaz de League: PATCH a la acción

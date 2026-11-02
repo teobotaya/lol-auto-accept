@@ -82,6 +82,8 @@ export function resumen(sesion, catalogo = new Map()) {
     banMarcado: nombre(banPendiente?.championId),
     pickMarcado: nombre(pickPendiente?.championId),
     miBan: nombre(miBan?.championId),
+    miBanId: miBan?.championId || null,
+    miPickId: (miPick?.completed && miPick.championId) || null,
     miPosicion: mio?.posicion ?? null,
     miCampeon: nombre(miPick?.championId) ?? mio?.campeon ?? null,
     yaBanee: yaHice.ban,
