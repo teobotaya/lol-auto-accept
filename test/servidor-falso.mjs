@@ -93,7 +93,9 @@ export function sesionSeleccion({ yo = 2, segundos = 27, turno = null, hechos = 
   };
 }
 
-export function servidorFalso({ clave = 'clave-de-prueba', timerInicial = 10 } = {}) {
+/* El timer del ready check, como en el cliente real: los segundos que pasaron
+   desde que saltó la partida, de 0 a 12. */
+export function servidorFalso({ clave = 'clave-de-prueba' } = {}) {
   const { key, cert, dir } = certificadoFalso();
   const est = {
     fase: 'None',
@@ -133,7 +135,7 @@ export function servidorFalso({ clave = 'clave-de-prueba', timerInicial = 10 } =
 
     if (req.url === '/lol-matchmaking/v1/ready-check') {
       if (!est.readyCheck) return responder(404, { httpStatus: 404, message: 'Not attached to a ready check' });
-      return responder(200, est.readyCheck);
+      return responder(200, { ...est.readyCheck, timer: (Date.now() - est.readyCheckDesde) / 1000 });
     }
     if (req.method === 'POST' && req.url === '/lol-matchmaking/v1/ready-check/accept') {
       if (est.fallarAceptar) return responder(500, { message: 'error simulado' });
@@ -156,7 +158,8 @@ export function servidorFalso({ clave = 'clave-de-prueba', timerInicial = 10 } =
     encolar() { est.fase = 'Matchmaking'; est.readyCheck = null; },
     saltarPartida() {
       est.fase = 'ReadyCheck';
-      est.readyCheck = { state: 'InProgress', playerResponse: 'None', timer: timerInicial, declinerIds: [] };
+      est.readyCheckDesde = Date.now();
+      est.readyCheck = { state: 'InProgress', playerResponse: 'None', timer: 0, declinerIds: [] };
     },
     caerse() { est.fase = 'Matchmaking'; est.readyCheck = null; est.seleccion = null; },
     /* La selección: entrar, que cambie el turno y que arranque la partida. */
@@ -169,8 +172,9 @@ export function servidorFalso({ clave = 'clave-de-prueba', timerInicial = 10 } =
     /* El cliente baja la sesión un instante antes de cambiar de fase: sigue
        diciendo ChampSelect y la sesión ya responde 404. */
     soltarSesion() { est.seleccion = null; },
-    lockfile(puerto) {
-      const ruta = join(dir, 'lockfile');
+    /* `ruta` permite que un cliente "reiniciado" escriba su lockfile donde
+       estaba el del anterior, como hace League al volver a abrirse. */
+    lockfile(puerto, ruta = join(dir, 'lockfile')) {
       writeFileSync(ruta, `LeagueClient:4242:${puerto}:${clave}:https`);
       return ruta;
     },

@@ -1,6 +1,6 @@
 {
   "name": "lol-auto-accept",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Acepta la partida de League automáticamente, hablando con la API local del cliente. Windows y macOS.",
   "type": "module",
   "private": true,
@@ -13,7 +13,9 @@
     "test:unidad": "node test/pruebas.mjs",
     "test:e2e": "node test/e2e.mjs",
     "test:avisos": "node test/avisos.mjs",
-    "test:seleccion": "node test/seleccion.mjs"
+    "test:seleccion": "node test/seleccion.mjs",
+    "instalar": "bash scripts/instalar-mac.sh",
+    "desinstalar": "bash scripts/desinstalar-mac.sh"
   },
   "license": "MIT"
 }

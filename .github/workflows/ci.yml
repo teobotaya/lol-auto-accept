@@ -22,5 +22,12 @@ jobs:
         with: { node-version: "22" }
       - name: Unitarias e integración contra un LCU falso
         run: node test/pruebas.mjs
+      - name: Avisos al teléfono, contra un receptor falso
+        run: node test/avisos.mjs
+      - name: Selección de campeones
+        run: node test/seleccion.mjs
       - name: La app entera, de punta a punta
         run: node test/e2e.mjs
+      - name: Los scripts de instalación de macOS al menos parsean
+        if: runner.os == 'macOS'
+        run: bash -n scripts/instalar-mac.sh && bash -n scripts/desinstalar-mac.sh

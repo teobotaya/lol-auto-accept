@@ -36,25 +36,47 @@ nada dentro de la partida.
 
 1. Instalá [Node.js](https://nodejs.org) (versión 20 o superior).
 2. Descargá esta carpeta.
-3. **Windows**: doble clic en `scripts\iniciar.bat`.
-   **macOS**: `chmod +x scripts/iniciar.command` una vez, después doble clic.
+3. **macOS**, instalado para que ande solo:
 
-Se abre un panel en `http://127.0.0.1:8123` con el estado, los ajustes y lo que
-fue pasando. Dejalo corriendo mientras jugás. No hace falta abrirlo antes que
-League: si el cliente todavía no está, la app lo espera y se conecta sola.
+   ```bash
+   npm run instalar
+   ```
+
+   Queda corriendo en segundo plano, arranca cada vez que iniciás sesión y
+   aparece como **LoL Auto Accept** en Spotlight. Para sacarlo,
+   `npm run desinstalar`.
+
+   **macOS**, solo cuando lo abras vos: doble clic en `scripts/iniciar.command`.
+   **Windows**: doble clic en `scripts\iniciar.bat`.
+
+El panel está en `http://127.0.0.1:8123`, con el estado, los ajustes y lo que
+fue pasando. No hace falta abrirlo antes que League: si el cliente todavía no
+está, la app lo espera y se conecta sola. Y si cerrás League y lo volvés a
+abrir, se reconecta sin que hagas nada.
+
+### Por qué la instalación copia la app
+
+`npm run instalar` no la corre desde donde la bajaste: la copia a
+`~/Library/Application Support/LoL Auto Accept`. Escritorio, Documentos y
+Descargas están protegidos por macOS, y un proceso que arranca `launchd` no
+puede leerlos sin Acceso total al disco: fallaría sin decir nada. Para
+actualizar, se vuelve a correr `npm run instalar`. El registro queda en
+`~/Library/Logs/LoL Auto Accept.log`.
 
 ## Lo que hace el panel
 
 | | |
 |---|---|
-| **Estado** | en qué fase está el cliente y, si saltó la partida, cuánto falta |
+| **Estado** | en qué fase está el cliente y, si saltó la partida, los segundos que quedan de los doce |
 | **Selección** | tu posición, si te toca elegir, cuánto queda y qué agarró tu equipo |
 | **Retardo** | cuánto espera antes de aceptar, con una variación al azar |
+| **Aceptar ya** | acepta sin esperar el retardo; en pausa, es la forma de aceptar desde el panel |
 | **Cancelar esta** | corta la aceptación en curso, para esta partida |
 | **Pausar** | deja de aceptar sin cerrar la app |
+| **Ver desde el teléfono** | abre el panel al Wi-Fi de tu casa, con llave |
 | **Bitácora** | qué pasó y cuándo |
 
-## Tres decisiones
+## Cuatro decisiones
 
 **No acepta al instante.** El retardo por defecto es 1,5 s ± 0,4 s. Dos razones:
 te da tiempo a cancelar si te levantaste de la silla, y aceptar en cero
@@ -62,7 +84,7 @@ milisegundos exactos, siempre, es la firma más obvia de que hay algo automátic
 del otro lado.
 
 **No sondea siempre al mismo ritmo.** Fuera de cola alcanza con mirar cada dos
-segundos; dentro, cada 300 ms, porque el contador del ready check dura diez y
+segundos; dentro, cada 300 ms, porque el contador del ready check dura doce y
 perder la ventana es justo lo que esta app viene a evitar. El ritmo lo decide
 la fase del cliente.
 
@@ -71,6 +93,13 @@ validación de cadena no se puede hacer sin el PEM de Riot. La salida fácil es
 apagar TLS del todo; acá se apaga la cadena pero se comprueba que el emisor sea
 Riot, y la conexión se corta si no lo es. Si dejás `riotgames.pem` en la raíz
 del proyecto, la validación pasa a ser completa.
+
+**Se retira cuando el cliente se va.** Cada vez que League se abre, el LCU
+estrena puerto y contraseña. Antes, si cerrabas el cliente y lo volvías a
+abrir, la app seguía golpeando el puerto viejo y había que reiniciarla. Ahora,
+al tercer fallo de conexión seguido el vigía se da por perdido, la bitácora lo
+dice una sola vez, y la app vuelve a buscar al cliente desde cero —sin perder
+la cuenta de las partidas que ya aceptó.
 
 ## Avisarme al teléfono
 
@@ -89,14 +118,46 @@ sin esperar a que salte una partida.
 | **Webhook propio** | Una URL tuya | Home Assistant, tu propio servidor, lo que tengas |
 | **iMessage** | Nada, solo macOS | La Mac te manda un iMessage a vos mismo y te llega al teléfono |
 
+### Ver el panel en el iPhone
+
+Los avisos te dicen que pasó algo. Para *ver* qué pasa —el reloj del ready
+check, tu turno en la selección— y tener los botones a mano, el panel se puede
+abrir al Wi-Fi de tu casa:
+
+1. En el panel de la Mac, **Ver el panel desde el teléfono** → tildá la casilla.
+2. **Copiar enlace** y pegalo en Safari del iPhone (con el portapapeles
+   universal de Apple llega solo), o **Mandármelo al teléfono** para que te
+   llegue por el canal de avisos.
+3. En Safari: **Compartir → Agregar a inicio**. Queda como una app.
+
+Desde ahí ves el estado y la selección, y podés **aceptar**, **cancelar** o
+**pausar**. Lo que configura la Mac —el canal de avisos, el retardo, abrir o
+cerrar la red— solo se cambia en la Mac.
+
+Con la red abierta, además, **tocar cualquier aviso abre el panel**. Es la
+combinación que buscaba: suena el teléfono, lo tocás y ves cuánto falta.
+
+**Cómo está cuidado.** Apagado de fábrica. Encendido, cualquier pedido que no
+venga de la propia Mac necesita la llave: 24 caracteres al azar que viajan una
+sola vez en el enlace y quedan en una cookie `HttpOnly`; la URL se limpia con
+una redirección para que la llave no quede en el historial. Los avisos de
+rutina mandan la dirección *sin* la llave, porque pasan por los servidores de
+ntfy o Pushcut. **Cambiar la llave** deja afuera a cualquier teléfono que
+tuviera la vieja. Y nada de esto sale de tu red: fuera de casa el panel no se ve.
+
+Si el iPhone no llega, revisá que esté en el mismo Wi-Fi que la Mac y que el
+firewall de macOS no esté bloqueando `node` (Ajustes del Sistema → Red →
+Firewall).
+
 ### Qué te avisa, y por qué esos momentos y no otros
 
-Un aviso que no te pide nada entrena a ignorar los que sí. Así que son cinco, y
+Un aviso que no te pide nada entrena a ignorar los que sí. Así que son pocos, y
 cada uno sale **una sola vez por partida** aunque la app mire el cliente cien
 veces:
 
 | Momento | Qué dice |
 |---|---|
+| **Saltó la partida** | solo si estás en pausa: tenés doce segundos y la app no la va a aceptar |
 | **Partida aceptada** | acepté por vos, y en cuánto |
 | **Selección de campeones** | ya estás adentro, vas ADC, hay 2 picks antes del tuyo, quedan 27 s |
 | **Te toca PICKEAR / BANEAR** | es tu turno, quedan N segundos, y qué eligió tu equipo |
@@ -105,6 +166,11 @@ veces:
 
 Los de la selección se pueden apagar solos, con la casilla del panel, sin perder
 el de *partida aceptada*.
+
+Cada aviso lleva una prioridad. Los que piden que hagas algo ya —te toca
+pickear, últimos segundos, saltó la partida en pausa— van con la más alta: en
+ntfy y en Pushcut atraviesan el modo Concentración del iPhone, si se lo
+permitís a la app.
 
 De dónde sale todo esto: `/lol-champ-select/v1/session`, del mismo LCU. Publica
 las acciones agrupadas por turno —cada pick y cada ban, de quién es y si está en
@@ -150,7 +216,22 @@ respeta. Un log no es lugar para una credencial, y una pantalla compartida
 tampoco.
 
 **El texto de iMessage va como argumento**, no interpolado en el AppleScript,
-así un mensaje con comillas no puede cerrar la cadena y colar código.
+así un mensaje con comillas no puede cerrar la cadena y colar código. La
+primera vez, macOS te va a preguntar si `node` puede controlar Mensajes: hay
+que decirle que sí. Y conviene escribir el número completo, con `+54 9`.
+
+**Las tildes llegan.** ntfy se publica en JSON y no con el título en una
+cabecera, que es la forma corta de su documentación: `fetch` manda las
+cabeceras en Latin-1 y "Selección de campeones" llegaba como "Selecci�n".
+
+**Otra página no puede tocar el panel.** Un servidor en 127.0.0.1 no está
+protegido por ser local: cualquier sitio abierto en tu navegador puede
+mandarle un POST simple. Todo POST del panel exige una cabecera propia, que un
+sitio ajeno no puede agregar sin que el navegador pregunte antes —y este
+servidor nunca dice que sí—, y se rechaza cualquier pedido cuyo `Host` no sea
+el de la Mac, que es la huella del DNS rebinding. Tampoco se filtra la
+configuración: `/api/estado` devolvía antes el destino de los avisos entero,
+token incluido.
 
 ## Cómo encuentra al cliente
 
@@ -170,8 +251,8 @@ Si tenés el juego en un lugar raro: `LOCKFILE=/ruta/al/lockfile npm start`.
 npm test
 ```
 
-**165 pruebas**: 31 de unidad e integración, 31 de avisos, 64 de selección de
-campeones y 39 de punta a punta. Corren contra un LCU falso que reproduce lo que
+**211 pruebas**: 45 de unidad e integración, 43 de avisos, 64 de selección de
+campeones y 59 de punta a punta. Corren contra un LCU falso que reproduce lo que
 importa —el certificado autofirmado emitido por Riot, la autenticación básica,
 la fase del gameflow, el ready-check con su contador y la sesión de selección
 con sus acciones y su reloj— y un receptor de notificaciones falso que captura
@@ -201,15 +282,38 @@ Y no te tocan la configuración: la de punta a punta arranca la app con
 `CARPETA_AJUSTES` apuntando a una carpeta descartable, así correr `npm test` en
 tu propia máquina no te pisa el canal de avisos ni el retardo que tengas puesto.
 
+Y las de la versión 1.1: el panel en el teléfono pedido de verdad por la IP de
+la red —sin llave no entra, con llave deja la cookie, una llave inventada o
+rotada no pasa, y los ajustes no se tocan desde ahí—; un POST sin la cabecera
+propia y un `Host` ajeno se rechazan; el estado no deja ver ni el destino de
+los avisos ni la llave; y el cliente que se cierra y vuelve con otro puerto y
+otra clave, que la app tiene que encontrar sola y seguir aceptando sin perder
+la cuenta.
+
 Corren en Windows, macOS y Linux en cada push.
 
-**Lo que no está probado contra un cliente real.** El proyecto se escribió en
-una máquina sin League instalado. Todo lo que es protocolo —TLS, auth, sondeo,
-retardo, POST— está ejercitado contra el LCU falso, y el parseo de credenciales
-contra muestras reales de las dos plataformas. Lo que falta verificar en vivo
-es que las rutas del lockfile y el nombre del proceso sigan siendo los de hoy
-en tu instalación; si algo de eso cambió, la app lo dice en la bitácora en vez
-de fallar en silencio.
+### Contra un cliente de verdad
+
+Probado el 2 de noviembre de 2026 en una MacBook Pro con macOS 26.6, cliente
+de LAS:
+
+- encuentra al cliente por el proceso (`LeagueClientUx`, entre una docena de
+  procesos *Helper* que también lo nombran) y también por el lockfile;
+- el certificado lo emite `O=Riot Games`, y la verificación del emisor pasa;
+- autenticación, fase del gameflow, invocador y el catálogo de 254 campeones
+  servido por el propio cliente;
+- el ready check y la selección responden 404 fuera de partida, que es lo que
+  la app espera.
+
+El `timer` del ready check cuenta los segundos que **pasaron**, no los que
+quedan. No hace falta adivinarlo: el propio cliente trae su interfaz en disco,
+y el componente `ready-check-timer` ajusta la velocidad de su video con
+`(duración − actual) / (duración − timer)`. Antes el panel mostraba esa cifra
+como si fuera la cuenta regresiva.
+
+La línea de comandos real trae dos puertos: `--riotclient-app-port` (el del
+Riot Client) y `--app-port` (el del LCU). Hay una prueba con esa línea tal cual,
+para que nadie los confunda.
 
 ## Estructura
 
@@ -220,7 +324,8 @@ src/vigia.mjs       la máquina de estados: sondeo adaptativo, retardo, cancelac
 src/champselect.mjs funciones puras sobre la sesión de selección, y los textos
 src/avisos.mjs      los canales de notificación, con secretos enmascarados
 src/ajustes.mjs     configuración en ~/.lol-auto-accept/ajustes.json
-src/index.mjs       arranque, reconexión y panel en 127.0.0.1
+src/index.mjs       arranque, reconexión y el panel (local, o en la red con llave)
+scripts/instalar-mac.sh   copia, LaunchAgent y acceso en ~/Applications
 test/servidor-falso.mjs   un LCU simulado, con TLS y auth de verdad
 ```
 

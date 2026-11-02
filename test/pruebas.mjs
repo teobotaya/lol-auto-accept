@@ -3,7 +3,7 @@
    corren el vigía completo contra él, con TLS, auth y POST de verdad. */
 import { leerLockfile, leerArgumentos, descubrir, RUTAS_LOCKFILE } from '../src/descubrir.mjs';
 import { Lcu } from '../src/lcu.mjs';
-import { Vigia } from '../src/vigia.mjs';
+import { Vigia, restanteReadyCheck } from '../src/vigia.mjs';
 import { servidorFalso } from './servidor-falso.mjs';
 
 let fallos = 0, total = 0;
@@ -28,6 +28,14 @@ console.log('\ndescubrimiento de credenciales');
   const mac = '/Applications/League of Legends.app/Contents/LoL/../LeagueClientUx.app/Contents/MacOS/LeagueClientUx --app-port=49152 --remoting-auth-token=Zk-9_qQ --no-rads';
   const m = leerArgumentos(mac);
   ok('macOS: argumentos sin comillas', m?.puerto === 49152 && m.clave === 'Zk-9_qQ', JSON.stringify(m));
+
+  /* La línea real de macOS trae también --riotclient-app-port, que es el
+     puerto del Riot Client y no el del LCU. Confundirlos es hablarle al
+     programa equivocado. (Muestra tomada de un cliente de verdad, LAS.) */
+  const real = '/Applications/League of Legends.app/Contents/LoL/League of Legends.app/Contents/MacOS/LeagueClientUx --riotclient-auth-token=AAAA --riotclient-app-port=53298 --no-rads --disable-self-update --region=LA2 --locale=es_AR --remoting-auth-token=Zk-9_qQ --app-port=53509';
+  const r = leerArgumentos(real);
+  ok('macOS real: no confunde el puerto del Riot Client con el del LCU',
+     r?.puerto === 53509 && r.clave === 'Zk-9_qQ', JSON.stringify(r));
 
   ok('no confunde el token del riot client con el del LCU',
      leerArgumentos('--riotclient-auth-token=NOOO --app-port=1 --remoting-auth-token=SI')?.clave === 'SI');
@@ -130,17 +138,68 @@ console.log('\nel vigía, de punta a punta');
   await dormir(600);
   ok('si la partida se cae, no dispara un accept huérfano', falso.estado.aceptaciones === 1);
 
+  /* Aceptar ya: el botón corta el retardo, no lo saltea a ciegas. */
+  falso.estado.fase = 'Matchmaking'; falso.estado.readyCheck = null; await dormir(200);
+  vigia.ajustes.retardoMs = 5000; vigia.ajustes.variacionMs = 0;
+  const antesYa = falso.estado.aceptaciones;
+  falso.saltarPartida();
+  await dormir(150);
+  const t0 = Date.now();
+  const apuro = await vigia.aceptarYa();
+  await dormir(150);
+  ok('"aceptar ya" corta el retardo de 5 s', apuro === true && falso.estado.aceptaciones === antesYa + 1,
+     `aceptaciones=${falso.estado.aceptaciones} en ${Date.now() - t0} ms`);
+  const ultimo = eventos.filter(([n]) => n === 'aceptado').at(-1)?.[1];
+  ok('y el aviso dice cuánto esperó de verdad, no los 5 s', ultimo?.tras < 1000, JSON.stringify(ultimo));
+  vigia.ajustes.retardoMs = 300; vigia.ajustes.variacionMs = 50;
+
+  /* En pausa, "aceptar ya" es la única forma de aceptar desde el panel. */
+  const encontradas = [];
+  vigia.on('encontrada', (d) => encontradas.push(d));
+  falso.estado.fase = 'Matchmaking'; falso.estado.readyCheck = null; await dormir(200);
+  vigia.ajustes.activo = false;
+  falso.saltarPartida();
+  await dormir(250);
+  ok('en pausa avisa que saltó la partida, una sola vez',
+     encontradas.length === 1 && encontradas[0].activo === false, JSON.stringify(encontradas));
+  ok('el contador del ready check va para atrás: quedan casi 12 s',
+     vigia.estado.restante >= 11 && vigia.estado.restante <= 12, String(vigia.estado.restante));
+  const antesPausa = falso.estado.aceptaciones;
+  await vigia.aceptarYa();
+  ok('en pausa, "aceptar ya" acepta igual', falso.estado.aceptaciones === antesPausa + 1);
+  await dormir(150);
+  ok('y el vigía sabe que ya respondí', vigia.estado.respondido === true || vigia.estado.fase !== 'ReadyCheck');
+  vigia.ajustes.activo = true;
+  falso.estado.fase = 'Matchmaking'; falso.estado.readyCheck = null; await dormir(200);
+  ok('fuera del ready check, "aceptar ya" no hace nada', (await vigia.aceptarYa()) === false);
+
   /* El cliente se muere */
   vigia.parar();
   await falso.cerrar();
   const vigia2 = new Vigia(new Lcu({ puerto, clave: falso.clave }), { ritmoLento: 80, ritmoRapido: 60 });
   const problemas = [];
   vigia2.on('problema', (p) => problemas.push(p));
+  let perdido = 0;
+  vigia2.on('perdido', () => perdido++);
   vigia2.arrancar();
-  await dormir(300);
-  vigia2.parar();
+  await dormir(500);
   ok('si el cliente no está, avisa en vez de morirse', problemas.length > 0 && vigia2.estado.fase === 'sin cliente',
      JSON.stringify(problemas[0]));
+  /* Un cliente cerrado falla en cada sondeo: la bitácora tiene que decirlo
+     una vez, no llenarse de la misma línea. */
+  ok('el mismo error no se repite en cada sondeo', problemas.length === 1, `problemas=${problemas.length}`);
+  /* Y al tercer fallo se retira: al volver, el cliente tiene otro puerto y
+     otra clave, así que seguir sondeando este no sirve para nada. */
+  ok('tras tres fallos seguidos se da por perdido y se detiene',
+     perdido === 1 && vigia2.corriendo === false, `perdido=${perdido} corriendo=${vigia2.corriendo}`);
+}
+
+console.log('\nel contador del ready check');
+{
+  ok('recién saltada quedan 12 s', restanteReadyCheck({ timer: 0 }) === 12);
+  ok('a los 3,4 s quedan 9 (redondea para arriba)', restanteReadyCheck({ timer: 3.4 }) === 9);
+  ok('pasada la ventana no da negativo', restanteReadyCheck({ timer: 15 }) === 0);
+  ok('sin timer, cero y no NaN', restanteReadyCheck({}) === 0 && restanteReadyCheck(null) === 0);
 }
 
 console.log('\ndescubrimiento por lockfile, con archivo real');

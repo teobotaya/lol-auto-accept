@@ -2,6 +2,11 @@
   const $ = (s) => document.querySelector(s);
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
   const hora = (t) => new Date(t).toLocaleTimeString('es-AR', { hour12: false });
+  /* Todo POST lleva la cabecera propia: el servidor rechaza los que no la
+     traen, que es lo que frena a otra página que quiera tocar el panel. */
+  const post = (ruta) => fetch(ruta, { method: 'POST', headers: { 'x-auto-accept': '1' } });
+  const DURACION_READY_CHECK = 12;
+  let esLocal = null;
 
   const SUBTITULOS = {
     None: 'el cliente está abierto, no estás en cola',
@@ -16,6 +21,13 @@
   let tocandoSliders = false;
 
   function pintar(d) {
+    /* Desde el teléfono se esconde lo que solo se cambia en la Mac, y no se
+       piden los canales, que el servidor no le da. */
+    if (esLocal !== d.local) {
+      esLocal = d.local !== false;
+      document.body.dataset.local = String(esLocal);
+      if (esLocal) { cargarCanales(); cargarRemoto(); }
+    }
     $('#conex').dataset.ok = String(!!d.conectado);
     $('#conex-txt').textContent = d.conectado ? 'cliente conectado' : 'sin cliente';
 
@@ -24,15 +36,25 @@
     $('#fase-txt').textContent = fase === 'None' ? 'Listo' : fase;
     $('#fase-sub').textContent = SUBTITULOS[fase] ?? 'esperando';
 
+    /* El bloque del ready check se ve mientras haya algo que decidir: cuando
+       la app está por aceptar, y también en pausa, que es justo cuando el
+       botón "Aceptar ya" hace falta. */
+    const activo = d.ajustes?.activo !== false;
     const cuenta = $('#cuenta');
-    cuenta.hidden = !d.aceptando;
-    if (d.aceptando) {
-      $('#anillo-n').textContent = d.restante ?? 0;
-      $('#anillo-ms').textContent = `${d.ajustes?.retardoMs ?? 0} ms ±${d.ajustes?.variacionMs ?? 0}`;
+    const decidir = d.fase === 'ReadyCheck' && !d.respondido;
+    cuenta.hidden = !(d.aceptando || decidir);
+    if (!cuenta.hidden) {
+      const n = d.restante ?? 0;
+      $('#anillo-n').textContent = n;
+      $('#anillo').style.setProperty('--p', String(Math.min(1, n / DURACION_READY_CHECK)));
+      $('#anillo').dataset.apremio = String(n <= 4);
+      $('#anillo-txt').innerHTML = d.aceptando
+        ? `acepto en <b>${d.ajustes?.retardoMs ?? 0} ms ±${d.ajustes?.variacionMs ?? 0}</b>`
+        : activo ? 'saltó la partida' : '<b>estás en pausa:</b> aceptala vos';
+      $('#cancelar').hidden = !d.aceptando;
     }
 
     const pausa = $('#pausa');
-    const activo = d.ajustes?.activo !== false;
     pausa.textContent = activo ? 'Pausar' : 'Reanudar';
     pausa.dataset.pausado = String(!activo);
 
@@ -139,13 +161,13 @@
     const p = new URLSearchParams({ canal: $('#canal').value,
                                     seleccion: $('#avisar-seleccion').checked ? 'si' : 'no' });
     if ($('#destino').value.trim()) p.set('destino', $('#destino').value.trim());
-    await fetch('api/avisos?' + p, { method: 'POST' });
+    await post('api/avisos?' + p);
     mostrarResultado(true, 'guardado');
     cargarCanales(); traer();
   });
   $('#probar-aviso').addEventListener('click', async () => {
     mostrarResultado(null, 'enviando…');
-    const r = await fetch('api/probar-aviso', { method: 'POST' }).then((x) => x.json()).catch(() => ({ ok: false, detalle: 'sin respuesta' }));
+    const r = await post('api/probar-aviso').then((x) => x.json()).catch(() => ({ ok: false, detalle: 'sin respuesta' }));
     mostrarResultado(r.ok, r.ok ? 'enviado — miralo en el iPhone' : r.detalle);
     traer();
   });
@@ -155,11 +177,53 @@
     if (ok === null) el.removeAttribute('data-ok'); else el.dataset.ok = String(ok);
   }
 
-  const traer = () => fetch('api/estado').then((r) => r.json()).then(pintar).catch(() => {});
-  traer(); cargarCanales(); setInterval(traer, 700);
+  /* ------------------------------------------- el panel en el teléfono */
+  let enlaces = [];
+  async function cargarRemoto(datos) {
+    const d = datos ?? await fetch('api/remoto').then((r) => r.json()).catch(() => null);
+    if (!d) return;
+    enlaces = d.enlaces ?? [];
+    $('#remoto-activo').checked = !!d.activo;
+    $('#remoto-detalle').hidden = !d.activo;
+    $('#remoto-enlaces').innerHTML = enlaces.map((e) =>
+      `<li><small>${esc(e.etiqueta)}</small>${esc(e.url)}</li>`).join('') ||
+      '<li>No encuentro una red local. ¿La Mac está conectada al Wi-Fi?</li>';
+  }
+  function resultadoRemoto(ok, txt) {
+    const el = $('#remoto-resultado');
+    el.textContent = txt;
+    if (ok === null) el.removeAttribute('data-ok'); else el.dataset.ok = String(ok);
+  }
+  $('#remoto-activo').addEventListener('change', async (ev) => {
+    const r = await post(`api/remoto?activo=${ev.target.checked ? 'si' : 'no'}`).then((x) => x.json()).catch(() => null);
+    resultadoRemoto(null, '');
+    cargarRemoto(r);
+    traer();
+  });
+  $('#remoto-copiar').addEventListener('click', async () => {
+    if (!enlaces[0]) return;
+    try { await navigator.clipboard.writeText(enlaces[0].url); resultadoRemoto(true, 'copiado — pegalo en Safari del iPhone'); }
+    catch { resultadoRemoto(false, 'no pude copiar: seleccioná el enlace a mano'); }
+  });
+  $('#remoto-mandar').addEventListener('click', async () => {
+    resultadoRemoto(null, 'enviando…');
+    const r = await post('api/remoto/mandar').then((x) => x.json()).catch(() => ({ ok: false, detalle: 'sin respuesta' }));
+    resultadoRemoto(r.ok, r.ok ? 'enviado — tocá la notificación' : r.detalle);
+    traer();
+  });
+  $('#remoto-rotar').addEventListener('click', async () => {
+    const r = await post('api/remoto?rotar=si').then((x) => x.json()).catch(() => null);
+    cargarRemoto(r);
+    resultadoRemoto(true, 'llave nueva: el enlace viejo ya no anda');
+    traer();
+  });
 
-  $('#pausa').addEventListener('click', () => fetch('api/pausa', { method: 'POST' }).then(traer));
-  $('#cancelar').addEventListener('click', () => fetch('api/cancelar', { method: 'POST' }).then(traer));
+  const traer = () => fetch('api/estado').then((r) => r.json()).then(pintar).catch(() => {});
+  traer(); setInterval(traer, 700);
+
+  $('#pausa').addEventListener('click', () => post('api/pausa').then(traer));
+  $('#cancelar').addEventListener('click', () => post('api/cancelar').then(traer));
+  $('#aceptar-ya').addEventListener('click', () => post('api/aceptar').then(traer));
 
   /* Mientras el dedo está en el slider no se pisa el valor con el del servidor. */
   for (const [id, sufijo] of [['retardo', ' ms'], ['variacion', ' ms']]) {
@@ -171,8 +235,7 @@
     });
     el.addEventListener('change', () => {
       tocandoSliders = false;
-      fetch(`api/ajustes?retardoMs=${$('#retardo').value}&variacionMs=${$('#variacion').value}`,
-        { method: 'POST' }).then(traer);
+      post(`api/ajustes?retardoMs=${$('#retardo').value}&variacionMs=${$('#variacion').value}`).then(traer);
     });
   }
 })();

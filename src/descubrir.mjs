@@ -56,8 +56,12 @@ async function porProceso(plataforma) {
         { timeout: 8000, windowsHide: true });
       return leerArgumentos(stdout);
     }
+    /* En macOS "LeagueClientUx" aparece en la ruta de una docena de procesos
+       —los Helper de Chromium, los LeagueCrashHandler— y no todos llevan el
+       puerto. Tomar el primero dependía del orden de los PID; ahora se toma
+       el primero que de verdad trae --app-port. */
     const { stdout } = await correr('/bin/sh', ['-c',
-      "ps -A -o args= | grep -m1 'LeagueClientU[x]'"], { timeout: 8000 });
+      "ps -A -o args= | grep 'LeagueClientU[x]' | grep -m1 -e '--app-port='"], { timeout: 8000 });
     return leerArgumentos(stdout);
   } catch { return null; }
 }

@@ -96,7 +96,8 @@ export function turnosAntesDelMio(acciones, yo) {
 /* ------------------------------------------------------------------ avisos
    Qué momentos merecen molestar al teléfono. Uno por cosa que cambia lo que
    tenés que hacer; el resto es ruido, y un aviso que no exige nada entrena a
-   ignorar los que sí. */
+   ignorar los que sí. La prioridad sigue la misma lógica: 5 es "dejá lo que
+   estés haciendo" y en el iPhone atraviesa el modo Concentración. */
 const reloj = (r) => (r.infinito || !Number.isFinite(r.segundos) ? 'Es tu turno.' : `Quedan ${r.segundos} s.`);
 
 export const MOMENTOS = {
@@ -110,11 +111,13 @@ export const MOMENTOS = {
        : '') +
       (r.segundos > 0 && !r.infinito ? ` Quedan ${r.segundos} s de esta fase.` : ''),
     etiqueta: 'video_game',
+    prioridad: 4,
   },
   tuTurnoBan: {
     titulo: 'Te toca BANEAR',
     texto: (r) => reloj(r),
     etiqueta: 'no_entry',
+    prioridad: 4,
   },
   tuTurnoPick: {
     titulo: 'Te toca PICKEAR',
@@ -123,26 +126,31 @@ export const MOMENTOS = {
         ? ` Tu equipo: ${r.equipo.filter((j) => !j.esYo && j.campeon).map((j) => j.campeon).join(', ')}.`
         : ''),
     etiqueta: 'rotating_light',
+    prioridad: 5,
   },
   ultimoAviso: {
     titulo: 'Últimos segundos',
     texto: (r) => `Quedan ${r.segundos} s y todavía no elegiste.`,
     etiqueta: 'alarm_clock',
+    prioridad: 5,
   },
   cayo: {
     titulo: 'Se cayó la partida',
     texto: () => 'Alguien no aceptó o se fue. Volvés a la cola.',
     etiqueta: 'x',
+    prioridad: 3,
   },
   empezo: {
     titulo: 'Arrancó la partida',
     texto: (r) => (r?.miCampeon ? `Estás jugando ${r.miCampeon}.` : 'La partida está cargando.'),
     etiqueta: 'checkered_flag',
+    prioridad: 3,
   },
 };
 
 export function armarAviso(momento, r) {
   const m = MOMENTOS[momento];
   if (!m) return null;
-  return { titulo: m.titulo, texto: m.texto(r ?? {}), etiqueta: m.etiqueta, evento: momento };
+  return { titulo: m.titulo, texto: m.texto(r ?? {}), etiqueta: m.etiqueta, evento: momento,
+           prioridad: m.prioridad ?? 3 };
 }

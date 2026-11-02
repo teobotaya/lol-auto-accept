@@ -45,15 +45,24 @@ export const CANALES = {
     ayuda: 'Gratis y sin cuenta. Instalá ntfy en el iPhone, suscribite a un tema con un nombre difícil de adivinar y escribilo acá.',
     destinoRotulo: 'Tema (o URL completa)',
     async enviar(destino, msg) {
-      return peticion(urlNtfy(destino), {
+      const d = destinoNtfy(destino);
+      if (!d.ok) return { ok: false, detalle: d.detalle };
+      /* Se publica como JSON y no con el título en una cabecera, que es la
+         forma corta que muestra la documentación: fetch manda las cabeceras en
+         Latin-1, y "Selección de campeones" llegaba al iPhone como
+         "Selecci�n de campeones". En el cuerpo JSON viaja en UTF-8. */
+      return peticion(d.servidor, {
         method: 'POST',
-        headers: {
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          topic: d.tema,
           title: msg.titulo,
-          tags: msg.etiqueta,
-          priority: 'default',
-          'content-type': 'text/plain; charset=utf-8',
-        },
-        body: msg.texto,
+          message: msg.texto,
+          tags: msg.etiqueta ? [msg.etiqueta] : [],
+          priority: msg.prioridad ?? 3,
+          /* Tocar la notificación abre el panel en el teléfono. */
+          ...(msg.url ? { click: msg.url } : {}),
+        }),
       });
     },
   },
@@ -66,7 +75,12 @@ export const CANALES = {
       return peticion(destino, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title: msg.titulo, text: msg.texto, sound: 'system' }),
+        body: JSON.stringify({
+          title: msg.titulo, text: msg.texto, sound: 'system',
+          /* Los urgentes atraviesan el modo Concentración, si se lo permitís. */
+          ...(msg.prioridad >= 4 ? { isTimeSensitive: true } : {}),
+          ...(msg.url ? { defaultAction: { url: msg.url } } : {}),
+        }),
       });
     },
   },
@@ -91,7 +105,9 @@ export const CANALES = {
     soloEn: 'darwin',
     async enviar(destino, msg) {
       if (process.platform !== 'darwin') return { ok: false, detalle: 'iMessage solo corre en macOS' };
-      const texto = `${msg.titulo}\n${msg.texto}`;
+      /* En iMessage el enlace va solo en el que lo pide: en cada aviso sería
+         una vista previa enorme repetida cinco veces por partida. */
+      const texto = `${msg.titulo}\n${msg.texto}` + (msg.evento === 'enlace' && msg.url ? `\n${msg.url}` : '');
       /* El texto va como argumento de osascript, no interpolado en el script:
          así un mensaje con comillas no puede cerrar la cadena y colar código. */
       const guion = `on run {destinatario, cuerpo}
@@ -110,11 +126,27 @@ export const CANALES = {
 };
 
 /* Un destino sin esquema es un tema del servidor público; con esquema, un
-   servidor propio. Vive aparte para poder probar el armado sin salir a la red. */
-export function urlNtfy(destino = '') {
-  return /^https?:\/\//i.test(destino)
-    ? destino
-    : `https://ntfy.sh/${encodeURIComponent(String(destino).trim())}`;
+   servidor propio con el tema al final. ntfy publica en JSON contra la raíz
+   del servidor, así que hay que separar las dos cosas. Vive aparte para poder
+   probar el armado sin salir a la red. */
+const TEMA_VALIDO = /^[\w-]{1,64}$/;
+export function destinoNtfy(destino = '') {
+  const t = String(destino).trim();
+  let servidor = 'https://ntfy.sh', tema = t;
+  if (/^https?:\/\//i.test(t)) {
+    try {
+      const u = new URL(t);
+      const partes = u.pathname.split('/').filter(Boolean);
+      tema = partes.pop() ?? '';
+      servidor = u.origin + (partes.length ? `/${partes.join('/')}` : '');
+    } catch { return { ok: false, detalle: 'la URL del servidor de ntfy no es válida' }; }
+  }
+  /* ntfy rechaza cualquier otra cosa con un 400 que no explica nada; mejor
+     decirlo acá, en castellano, antes de salir a la red. */
+  if (!TEMA_VALIDO.test(tema)) {
+    return { ok: false, detalle: 'el tema de ntfy solo puede tener letras, números, - y _ (hasta 64)' };
+  }
+  return { ok: true, servidor, tema };
 }
 
 async function peticion(url, opciones) {
@@ -140,7 +172,19 @@ const CAMPOS = ['fase', 'segundos', 'infinito', 'miTurno', 'tipoTurno', 'miPosic
 export function armarMensaje(evento, datos = {}) {
   if (evento === 'prueba') {
     return { titulo: 'Auto Accept anda', texto: 'Si ves esto en el iPhone, los avisos están funcionando.',
-             etiqueta: 'white_check_mark', evento };
+             etiqueta: 'white_check_mark', evento, prioridad: 3 };
+  }
+  if (evento === 'enlace') {
+    return { titulo: 'El panel, en tu teléfono',
+             texto: 'Tocá para abrirlo. Desde ahí ves la cola y la selección, y podés aceptar o cancelar. Solo funciona en el mismo Wi-Fi que la Mac.',
+             etiqueta: 'iphone', evento, prioridad: 3, url: datos.url };
+  }
+  /* Solo sale con la app en pausa: es el único aviso que te dice que tenés
+     doce segundos para hacer algo, así que va con la prioridad más alta. */
+  if (evento === 'encontrada') {
+    return { titulo: 'Saltó la partida',
+             texto: `Estás en pausa, no la acepto yo.${datos.restante ? ` Quedan ${datos.restante} s.` : ''} Tocá para aceptarla desde el teléfono.`,
+             etiqueta: 'bell', evento, prioridad: 5 };
   }
   /* Los textos de la selección viven en champselect.mjs, al lado de los datos
      que describen: acá solo se los envuelve para mandarlos. */
@@ -152,14 +196,18 @@ export function armarMensaje(evento, datos = {}) {
   const n = datos.aceptadas ?? 0;
   return {
     titulo: 'Partida aceptada',
-    texto: `Aceptada en ${datos.tras ?? '?'} ms.` + (n ? ` Van ${n} en esta sesión.` : ''),
+    texto: (datos.aMano ? 'La aceptaste desde el panel.' : `Aceptada en ${datos.tras ?? '?'} ms.`) +
+      (n ? ` Van ${n} en esta sesión.` : ''),
     etiqueta: 'video_game',
     evento,
+    prioridad: 4,
     ...datos,
   };
 }
 
-export function crearAvisador(leerConfig, anotar = () => {}) {
+/* `enlace` devuelve la dirección del panel para el teléfono, o nada si no
+   está abierto a la red: con ella, tocar cualquier aviso abre el panel. */
+export function crearAvisador(leerConfig, anotar = () => {}, { enlace = () => null } = {}) {
   /* Un solo reintento, y separado en el tiempo: si el teléfono está sin
      señal, insistir diez veces no lo va a despertar y sí puede trabar la app. */
   const mandar = async (evento, datos) => {
@@ -172,6 +220,7 @@ export function crearAvisador(leerConfig, anotar = () => {}) {
     if (!cfg.destino) return { ok: false, detalle: 'falta el destino' };
 
     const msg = armarMensaje(evento, datos);
+    if (!msg.url) { const u = enlace(); if (u) msg.url = u; }
     let r = await canal.enviar(cfg.destino, msg);
     if (!r.ok) r = await canal.enviar(cfg.destino, msg);
     anotar(r.ok ? 'ok' : 'aviso',
@@ -184,5 +233,7 @@ export function crearAvisador(leerConfig, anotar = () => {}) {
     /* Sin await del lado de quien acepta: el aviso nunca bloquea la partida. */
     avisar(evento, datos) { mandar(evento, datos).catch(() => {}); },
     probar() { return mandar('prueba', {}); },
+    /* Este sí se espera: lo pide alguien desde el panel y quiere saber si llegó. */
+    mandarEnlace(url) { return mandar('enlace', { url }); },
   };
 }

@@ -2,7 +2,7 @@
    que la app manda: método, cabeceras y cuerpo. Sin tocar ntfy ni Pushcut de
    verdad — lo que hay que verificar es que el pedido salga bien armado. */
 import { createServer } from 'node:http';
-import { CANALES, armarMensaje, crearAvisador, enmascarar, urlNtfy } from '../src/avisos.mjs';
+import { CANALES, armarMensaje, crearAvisador, enmascarar, destinoNtfy } from '../src/avisos.mjs';
 import { resumen } from '../src/champselect.mjs';
 import { sesionSeleccion, CAMPEONES } from './servidor-falso.mjs';
 
@@ -49,14 +49,35 @@ console.log('\ncada canal arma bien su pedido');
   recibidos.length = 0;
   await CANALES.ntfy.enviar(base + '/mi-tema', armarMensaje('aceptada', { tras: 1200, aceptadas: 1 }));
   const n = recibidos.at(-1);
-  ok('ntfy: POST con el título en la cabecera', n.metodo === 'POST' && n.cabeceras.title === 'Partida aceptada',
-     JSON.stringify({ m: n.metodo, t: n.cabeceras.title }));
-  ok('ntfy: el cuerpo es el texto plano', /1200 ms/.test(n.cuerpo), n.cuerpo);
+  const jn = JSON.parse(n.cuerpo);
+  ok('ntfy: POST en JSON a la raíz del servidor, con el tema adentro',
+     n.metodo === 'POST' && n.ruta === '/' && jn.topic === 'mi-tema', JSON.stringify({ ruta: n.ruta, topic: jn.topic }));
+  ok('ntfy: título y texto', jn.title === 'Partida aceptada' && /1200 ms/.test(jn.message), n.cuerpo);
+  ok('ntfy: aceptar una partida va con prioridad alta', jn.priority === 4, String(jn.priority));
+
+  /* El motivo de mandar JSON: en una cabecera, fetch manda la "ó" como un
+     byte Latin-1 y el iPhone mostraba "Selecci�n". */
+  await CANALES.ntfy.enviar(base + '/mi-tema', { titulo: 'Selección de campeones', texto: 'Arrancó, ñandú', etiqueta: 'x' });
+  const tildes = JSON.parse(recibidos.at(-1).cuerpo);
+  ok('ntfy: las tildes y la ñ llegan intactas', tildes.title === 'Selección de campeones' && tildes.message === 'Arrancó, ñandú',
+     recibidos.at(-1).cuerpo);
+  ok('ntfy: ninguna cabecera lleva texto con tildes',
+     !Object.values(recibidos.at(-1).cabeceras).some((v) => /[^\x00-\x7F]/.test(String(v))));
+
+  await CANALES.ntfy.enviar(base + '/mi-tema', { ...armarMensaje('prueba'), url: 'http://192.168.1.45:8123/' });
+  ok('ntfy: con el panel abierto a la red, tocar el aviso lo abre',
+     JSON.parse(recibidos.at(-1).cuerpo).click === 'http://192.168.1.45:8123/', recibidos.at(-1).cuerpo);
+  await CANALES.ntfy.enviar(base + '/mi-tema', armarMensaje('prueba'));
+  ok('ntfy: sin panel remoto no manda un click vacío', !('click' in JSON.parse(recibidos.at(-1).cuerpo)));
 
   await CANALES.pushcut.enviar(base + '/pc', armarMensaje('prueba'));
   const p = recibidos.at(-1);
   const jp = JSON.parse(p.cuerpo);
   ok('pushcut: JSON con title y text', jp.title === 'Auto Accept anda' && typeof jp.text === 'string', p.cuerpo);
+  await CANALES.pushcut.enviar(base + '/pc', { ...armarMensaje('encontrada', { restante: 9 }), url: 'http://mac.local:8123/' });
+  const jp2 = JSON.parse(recibidos.at(-1).cuerpo);
+  ok('pushcut: lo urgente atraviesa Concentración y abre el panel',
+     jp2.isTimeSensitive === true && jp2.defaultAction?.url === 'http://mac.local:8123/', recibidos.at(-1).cuerpo);
 
   await CANALES.webhook.enviar(base + '/wh', armarMensaje('aceptada', { tras: 900, aceptadas: 2 }));
   const w = JSON.parse(recibidos.at(-1).cuerpo);
@@ -70,12 +91,16 @@ console.log('\nel aviso nunca puede romper la aceptación');
      verifica el armado de la URL sin salir a la red — una prueba que llama a
      un servicio de terceros es una prueba que falla el día que ese servicio
      tenga un mal rato. */
-  ok('ntfy: un tema suelto se convierte en la URL del servidor público',
-     urlNtfy('mi-tema') === 'https://ntfy.sh/mi-tema', urlNtfy('mi-tema'));
-  ok('ntfy: un tema con caracteres raros se escapa',
-     urlNtfy('a b/c') === 'https://ntfy.sh/a%20b%2Fc', urlNtfy('a b/c'));
-  ok('ntfy: una URL completa se respeta tal cual',
-     urlNtfy('https://ntfy.midominio.com/x') === 'https://ntfy.midominio.com/x');
+  const suelto = destinoNtfy('mi-tema');
+  ok('ntfy: un tema suelto va al servidor público',
+     suelto.servidor === 'https://ntfy.sh' && suelto.tema === 'mi-tema', JSON.stringify(suelto));
+  const propio = destinoNtfy('https://ntfy.midominio.com/x');
+  ok('ntfy: con una URL completa se separan servidor y tema',
+     propio.servidor === 'https://ntfy.midominio.com' && propio.tema === 'x', JSON.stringify(propio));
+  ok('ntfy: un tema que ntfy rechazaría se avisa antes, en castellano',
+     destinoNtfy('a b/c').ok === false && /letras, números/.test(destinoNtfy('a b/c').detalle));
+  const r0 = await CANALES.ntfy.enviar('tema con espacios', armarMensaje('prueba'));
+  ok('ntfy: y el envío devuelve el error sin salir a la red', r0.ok === false, JSON.stringify(r0));
 
   const r1 = await CANALES.webhook.enviar('no-es-una-url', armarMensaje('prueba'));
   ok('webhook: una URL inválida devuelve error en vez de tirar excepción',
@@ -174,6 +199,33 @@ console.log('\nlos avisos de la selección de campeones');
   av.avisar('tuTurnoPick', r);
   await dormir(300);
   ok('y encendidos, llegan', recibidos.length === 1, `pedidos=${recibidos.length}`);
+}
+
+console.log('\nel panel en el teléfono, desde los avisos');
+{
+  recibidos.length = 0;
+  const cfg = { canal: 'webhook', destino: base + '/hook', seleccion: true };
+  let panel = null;
+  const av = crearAvisador(() => cfg, () => {}, { enlace: () => panel });
+  /* Esperar a que llegue el pedido, no un tiempo fijo: con la máquina
+     cargada, 200 ms a veces no alcanzaban y la prueba miraba el anterior. */
+  const llegan = async (n) => { for (let i = 0; i < 40 && recibidos.length < n; i++) await dormir(50); };
+  av.avisar('aceptada', { tras: 1, aceptadas: 1 });
+  await llegan(1);
+  ok('sin panel remoto, el aviso no lleva dirección', !('url' in JSON.parse(recibidos.at(-1).cuerpo)));
+  panel = 'http://192.168.1.45:8123/';
+  av.avisar('aceptada', { tras: 1, aceptadas: 2 });
+  await llegan(2);
+  ok('con panel remoto, cada aviso lleva la dirección limpia', JSON.parse(recibidos.at(-1).cuerpo).url === panel);
+
+  const r = await av.mandarEnlace('http://192.168.1.45:8123/?llave=abcdefghijklmnopqrstuvwx');
+  const e = JSON.parse(recibidos.at(-1).cuerpo);
+  ok('"mandármelo al teléfono" sí lleva la llave, y espera la respuesta',
+     r.ok === true && e.evento === 'enlace' && /llave=/.test(e.url), recibidos.at(-1).cuerpo);
+
+  const enc = armarMensaje('encontrada', { restante: 9 });
+  ok('en pausa, "saltó la partida" va con la prioridad máxima', enc.prioridad === 5 && /9 s/.test(enc.texto), JSON.stringify(enc));
+  ok('aceptar a mano no inventa milisegundos', /desde el panel/.test(armarMensaje('aceptada', { aMano: true, tras: 0 }).texto));
 }
 
 await new Promise((r) => receptor.close(r));

@@ -17,10 +17,18 @@ export const POR_DEFECTO = {
   ritmoRapido: 300,
   ritmoSeleccion: 1000,
   avisarUltimos: 10,
+  reintentoMs: 5000,
   activo: true,
   puertoPanel: 8123,
   avisos: { canal: 'ninguno', destino: '', seleccion: true },
+  /* Ver el panel desde el teléfono. Apagado de fábrica: abrir algo a la red
+     tiene que ser una decisión, no un valor por defecto. */
+  remoto: { activo: false, llave: '' },
 };
+
+/* La llave del panel remoto: 24 caracteres al azar, de los que se pueden
+   escribir en una URL sin escaparlos. */
+const LLAVE_VALIDA = /^[\w-]{16,64}$/;
 
 const CANALES_VALIDOS = new Set(['ninguno', 'ntfy', 'pushcut', 'webhook', 'imessage']);
 
@@ -41,6 +49,8 @@ export function sanear(entrada = {}) {
        alcanza de sobra y no llena el log del cliente de pedidos. */
     ritmoSeleccion: entero(entrada.ritmoSeleccion, 300, 5000, POR_DEFECTO.ritmoSeleccion),
     avisarUltimos: entero(entrada.avisarUltimos, 0, 30, POR_DEFECTO.avisarUltimos),
+    /* Cada cuánto se busca al cliente cuando no está abierto. */
+    reintentoMs: entero(entrada.reintentoMs, 1000, 60000, POR_DEFECTO.reintentoMs),
     activo: entrada.activo !== false,
     puertoPanel: entero(entrada.puertoPanel, 1024, 65535, POR_DEFECTO.puertoPanel),
     avisos: {
@@ -51,12 +61,18 @@ export function sanear(entrada = {}) {
          "partida aceptada", que es el que de verdad no querés perderte. */
       seleccion: entrada.avisos?.seleccion !== false,
     },
+    remoto: {
+      /* Sin llave no hay acceso remoto: un panel abierto a la red sin nada que
+         lo proteja es justo lo que este ajuste no puede permitir. */
+      activo: entrada.remoto?.activo === true && LLAVE_VALIDA.test(entrada.remoto?.llave ?? ''),
+      llave: LLAVE_VALIDA.test(entrada.remoto?.llave ?? '') ? entrada.remoto.llave : '',
+    },
   };
 }
 
 export function leer() {
   try { return sanear(JSON.parse(readFileSync(ARCHIVO, 'utf8'))); }
-  catch { return { ...POR_DEFECTO }; }
+  catch { return sanear(POR_DEFECTO); }
 }
 
 export function guardar(ajustes) {

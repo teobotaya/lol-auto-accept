@@ -44,8 +44,17 @@ main{max-width:760px;margin:0 auto;padding:clamp(18px,4vw,30px);display:grid;gap
 
 .cuenta-atras{display:grid;gap:12px;justify-items:center;animation:aparece .3s var(--e)}
 @keyframes aparece{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
-.anillo{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;
-  border:3px solid var(--oro);font:700 30px/1 var(--mono);color:var(--oro)}
+.anillo{--p:1;width:84px;height:84px;border-radius:50%;display:grid;place-items:center;
+  font:700 30px/1 var(--mono);color:var(--oro);position:relative;
+  background:conic-gradient(var(--oro) calc(var(--p) * 360deg),#232D3B 0)}
+/* El aro se vacía con los doce segundos del ready check: el número dice
+   cuánto queda y el aro deja verlo de reojo, desde lejos. */
+.anillo::before{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--tarjeta)}
+.anillo span{position:relative;font-variant-numeric:tabular-nums}
+.anillo[data-apremio="true"]{color:var(--rojo);background:conic-gradient(var(--rojo) calc(var(--p) * 360deg),#232D3B 0)}
+.botonera{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.b-oro{background:var(--oro);color:var(--oro-txt);border-color:var(--oro);font-weight:700}
+.b-oro:hover{background:#D8BC80;border-color:#D8BC80}
 .cuenta-atras p{color:var(--apagado);font-size:14px}
 .cuenta-atras b{color:var(--txt);font-family:var(--mono)}
 
@@ -118,6 +127,30 @@ select:hover,input[type=text]:hover{border-color:#31405A}
 .bitacora li[data-t="ok"] .hora{color:var(--verde)}
 .bitacora li[data-t="cola"] .hora{color:var(--oro)}
 .bitacora li[data-t="error"] .hora{color:var(--rojo)}
+
+.pasos{margin:14px 0 0;padding-left:20px;display:grid;gap:8px;color:var(--apagado);font-size:13.5px;max-width:62ch}
+.pasos b{color:var(--txt);font-weight:600}
+.tenue{color:var(--tenue)}
+.enlaces{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:6px}
+.enlaces li{padding:10px 12px;border-radius:10px;background:#0E141C;font-size:12.5px;color:var(--txt);
+  overflow-wrap:anywhere;user-select:all}
+.enlaces small{display:block;color:var(--tenue);font-size:11px;margin-bottom:3px;letter-spacing:.06em;text-transform:uppercase}
+
+/* En el teléfono el panel es para mirar y apretar, no para configurar. */
+body[data-local="false"] .solo-mac{display:none}
+body:not([data-local="false"]) .solo-telefono{display:none}
+
+@media (max-width:480px){
+  .control{grid-template-columns:1fr auto;gap:6px 12px}
+  .control label{grid-column:1/-1}
+  .control span:empty{display:none}
+  .botonera .b,.acciones-aviso .b{flex:1 1 auto}
+  .equipo .pos{width:58px}
+}
+@supports (padding:env(safe-area-inset-bottom)){
+  footer{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
+  .barra{padding-top:max(20px, env(safe-area-inset-top))}
+}
 
 footer{max-width:760px;margin:0 auto;padding:10px clamp(18px,4vw,30px) 40px;
   color:var(--tenue);font-size:12.5px}

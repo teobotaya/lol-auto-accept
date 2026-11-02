@@ -2,7 +2,12 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A0E14">
+<!-- Agregado a la pantalla de inicio del iPhone, se abre como una app. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Auto Accept">
 <title>Auto Accept — League</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,9 +30,12 @@
       <span class="fase-sub" id="fase-sub">esperando al cliente de League</span>
     </div>
     <div class="cuenta-atras" id="cuenta" hidden>
-      <div class="anillo"><span id="anillo-n">0</span></div>
-      <p>acepto en <b id="anillo-ms">—</b></p>
-      <button class="b b-rojo" id="cancelar">Cancelar esta</button>
+      <div class="anillo" id="anillo"><span id="anillo-n">0</span></div>
+      <p id="anillo-txt">acepto en <b id="anillo-ms">—</b></p>
+      <div class="botonera">
+        <button class="b b-oro" id="aceptar-ya">Aceptar ya</button>
+        <button class="b b-rojo" id="cancelar">Cancelar esta</button>
+      </div>
     </div>
     <button class="b b-grande" id="pausa">Pausar</button>
   </section>
@@ -45,7 +53,7 @@
     <p class="baneos" id="sel-baneos"></p>
   </section>
 
-  <section class="tarjeta">
+  <section class="tarjeta solo-mac">
     <h2>Cuánto esperar antes de aceptar</h2>
     <p class="ayuda">Aceptar en cero milisegundos no te deja arrepentirte si te levantaste, y es la señal más obvia de que hay algo automático. El valor real varía un poco en cada partida.</p>
     <div class="control">
@@ -60,7 +68,7 @@
     </div>
   </section>
 
-  <section class="tarjeta">
+  <section class="tarjeta solo-mac">
     <h2>Avisarme al teléfono</h2>
     <p class="ayuda">Atajos no puede quedarse escuchando algo de internet por su cuenta: hace falta algo que reciba el push. Elegí por dónde.</p>
     <div class="control">
@@ -85,6 +93,29 @@
     </div>
   </section>
 
+  <section class="tarjeta solo-mac" id="remoto">
+    <h2>Ver el panel desde el teléfono</h2>
+    <p class="ayuda">Con esto abierto, el iPhone ve este mismo panel por el Wi-Fi de tu casa: la cola, la selección, y los botones de aceptar, cancelar y pausar. Los ajustes se siguen cambiando solo desde la Mac. Fuera de tu red no se ve.</p>
+    <label class="casilla" for="remoto-activo">
+      <input type="checkbox" id="remoto-activo">
+      <span>Dejar que el teléfono vea el panel (misma red Wi-Fi)</span>
+    </label>
+    <div id="remoto-detalle" hidden>
+      <ol class="pasos">
+        <li>Abrí este enlace una vez en Safari del iPhone. <span class="tenue">Copialo acá y pegalo allá: con el portapapeles universal de Apple llega solo.</span></li>
+        <li>En Safari: <b>Compartir → Agregar a inicio</b>. Queda como una app más.</li>
+        <li>Si tenés avisos configurados, tocar cualquiera abre el panel.</li>
+      </ol>
+      <ul class="enlaces mono" id="remoto-enlaces"></ul>
+      <div class="acciones-aviso">
+        <button class="b" id="remoto-copiar">Copiar enlace</button>
+        <button class="b" id="remoto-mandar">Mandármelo al teléfono</button>
+        <button class="b b-rojo" id="remoto-rotar">Cambiar la llave</button>
+        <span class="resultado mono" id="remoto-resultado"></span>
+      </div>
+    </div>
+  </section>
+
   <section class="tarjeta cifras">
     <div><span class="n" id="c-aceptadas">0</span><span class="l">aceptadas</span></div>
     <div><span class="n" id="c-canceladas">0</span><span class="l">canceladas</span></div>
@@ -99,6 +130,7 @@
 </main>
 
 <footer>
+  <p class="solo-telefono">Estás viendo el panel de la Mac desde la red de tu casa. Los ajustes se cambian allá.</p>
   <p>Habla con la API local del cliente (LCU). No lee la pantalla, no mueve el mouse y no toca el proceso del juego.</p>
 </footer>
 <script src="ui.js" defer></script>
