@@ -33,6 +33,12 @@ export function resumen(sesion, catalogo = new Map()) {
     pick: mias.some((a) => a.type === 'pick' && a.completed),
   };
   const miPick = mias.find((a) => a.type === 'pick');
+  /* Las acciones que todavía me quedan por hacer, estén en curso o no: el
+     pick se puede marcar desde la fase de planificación, mucho antes de que
+     me toque, y así el equipo ya sabe qué voy a jugar. */
+  const banPendiente = mias.find((a) => a.type === 'ban' && !a.completed) ?? null;
+  const pickPendiente = mias.find((a) => a.type === 'pick' && !a.completed) ?? null;
+  const miBan = mias.filter((a) => a.type === 'ban' && a.completed).at(-1);
 
   /* El reloj tiene tres formas de no ser un número de segundos: la bandera
      isInfinite, el centinela enorme que manda el cliente cuando la fase no
@@ -62,6 +68,20 @@ export function resumen(sesion, catalogo = new Map()) {
        no comerse el segundo baneo en los modos que tienen dos rondas: sin él,
        "ya avisé tuTurnoBan" valdría para toda la partida. */
     accionId: enCurso?.id ?? null,
+    banId: banPendiente?.id ?? null,
+    pickId: pickPendiente?.id ?? null,
+    /* Lo que está marcado en la acción en curso (en el cliente se ve como el
+       campeón "elegido pero sin fijar"); si no es mi turno, el pick marcado. */
+    marcadoId: (enCurso ?? pickPendiente)?.championId || null,
+    marcado: nombre((enCurso ?? pickPendiente)?.championId),
+    /* Y lo marcado en cada una de mis acciones pendientes, por separado: en
+       mi turno de ban, "lo marcado" es el ban, pero el pick sigue teniendo lo
+       suyo, y hay que poder mirar los dos. */
+    banMarcadoId: banPendiente?.championId || null,
+    pickMarcadoId: pickPendiente?.championId || null,
+    banMarcado: nombre(banPendiente?.championId),
+    pickMarcado: nombre(pickPendiente?.championId),
+    miBan: nombre(miBan?.championId),
     miPosicion: mio?.posicion ?? null,
     miCampeon: nombre(miPick?.championId) ?? mio?.campeon ?? null,
     yaBanee: yaHice.ban,
@@ -115,13 +135,14 @@ export const MOMENTOS = {
   },
   tuTurnoBan: {
     titulo: 'Te toca BANEAR',
-    texto: (r) => reloj(r),
+    texto: (r) => reloj(r) + (r.planBan ? ` Ya está marcado ${r.planBan}: banealo desde el panel.` : ''),
     etiqueta: 'no_entry',
     prioridad: 4,
   },
   tuTurnoPick: {
     titulo: 'Te toca PICKEAR',
     texto: (r) => reloj(r) +
+      (r.planPick ? ` Ya está marcado ${r.planPick}: fijalo desde el panel.` : '') +
       (r.equipo?.some((j) => j.campeon && !j.esYo)
         ? ` Tu equipo: ${r.equipo.filter((j) => !j.esYo && j.campeon).map((j) => j.campeon).join(', ')}.`
         : ''),

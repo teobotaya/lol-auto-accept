@@ -206,6 +206,137 @@ try {
      momentos.length === mudo && vigia.estado.seleccion === null,
      JSON.stringify({ nuevos: nombres().slice(mudo), seleccion: vigia.estado.seleccion }));
   ok('el vigía sigue vivo', vigia.cuenta.errores === 0, `errores=${vigia.cuenta.errores}`);
+
+  /* ------------------------------------------ elegir desde el teléfono */
+  console.log('\nelegir campeón y ban desde el panel');
+  const fijados = [];
+  vigia.on('fijado', (f) => fijados.push(f));
+  const marcas = () => falso.estado.marcas;
+  const mia = (id) => falso.estado.seleccion.actions.flat().find((a) => a.id === id);
+
+  falso.caerse(); await dormir(200);
+  ok('fuera de la selección no se puede planear',
+     (await vigia.planear('pick', 51)).ok === false);
+
+  /* Planificación: todavía no le toca a nadie, pero el pick ya se puede marcar. */
+  falso.entrarSeleccion({ fase: 'PLANNING', segundos: 30 });
+  await dormir(200);
+  const r0 = vigia.estado.seleccion;
+  ok('el resumen sabe cuál es mi acción de pick', r0?.pickId === 204 && r0.fase === 'PLANNING',
+     JSON.stringify({ pickId: r0?.pickId, fase: r0?.fase }));
+  const lista = await vigia.disponibles('pick');
+  ok('la lista sale del cliente, sin los baneados y en orden alfabético',
+     lista.length === 5 && lista[0].nombre === 'Ashe' && !lista.some((c) => c.nombre === 'Ahri'),
+     JSON.stringify(lista.map((c) => c.nombre)));
+  const mal = await vigia.planear('pick', 103);
+  ok('no deja planear un campeón que ya está baneado', mal.ok === false && /no lo podés elegir/.test(mal.detalle),
+     JSON.stringify(mal));
+  ok('ni algo que no es ban ni pick', (await vigia.planear('jungla', 51)).ok === false);
+
+  const bien = await vigia.planear('pick', 51);
+  ok('planear el pick lo marca en el cliente en el acto, sin fijarlo',
+     bien.ok && marcas().some((m) => m.accion === 204 && m.championId === 51 && m.completed === false),
+     JSON.stringify(marcas()));
+  ok('y el equipo lo ve como intención', falso.estado.seleccion.myTeam[2].championPickIntent === 51);
+  ok('el plan se ve en el estado', vigia.instantanea().plan.pick?.nombre === 'Caitlyn',
+     JSON.stringify(vigia.instantanea().plan));
+  const fuera = await vigia.fijar('pick');
+  ok('fijar antes de tiempo se rechaza con una razón', fuera.ok === false && /no te toca/.test(fuera.detalle),
+     JSON.stringify(fuera));
+
+  /* Si lo cambiás en la PC, gana la PC: la app no vuelve a pisarlo. */
+  const antesDeTocar = marcas().length;
+  mia(204).championId = 53;
+  await dormir(250);
+  ok('si cambiás el campeón en la PC, la app no te lo pisa', marcas().length === antesDeTocar,
+     JSON.stringify(marcas().slice(antesDeTocar)));
+  ok('y suelta su plan: el panel muestra lo que elegiste en la PC',
+     vigia.plan.pick === null && vigia.estado.seleccion.pickMarcado === 'Blitzcrank',
+     JSON.stringify({ plan: vigia.plan, marcado: vigia.estado.seleccion.pickMarcado }));
+  await vigia.planear('pick', 51);
+  ok('pero si lo volvés a pedir desde el panel, se marca de nuevo',
+     marcas().length === antesDeTocar + 1 && mia(204).championId === 51, JSON.stringify(marcas().slice(antesDeTocar)));
+
+  /* Me toca: la sesión es la misma, con mi acción en curso. */
+  falso.estado.seleccion.timer.phase = 'BAN_PICK';
+  mia(204).isInProgress = true;
+  await dormir(200);
+  ok('en mi turno no lo vuelve a marcar si ya estaba', marcas().length === antesDeTocar + 1);
+  /* Si el cliente limpia la marca al empezar el turno, se vuelve a poner:
+     no es que la cambiaste vos, es que desapareció. */
+  mia(204).championId = 0;
+  await dormir(200);
+  ok('si la marca desaparece, la vuelve a poner', mia(204).championId === 51 && marcas().length === antesDeTocar + 2,
+     JSON.stringify(marcas().slice(antesDeTocar)));
+  const fijo = await vigia.fijar('pick');
+  ok('fijar lo bloquea con el campeón planeado',
+     fijo.ok && fijo.campeon === 'Caitlyn' && marcas().at(-1).completed === true && mia(204).completed,
+     JSON.stringify({ fijo, ultima: marcas().at(-1) }));
+  ok('y avisa que se fijó, para guardarlo en los recientes',
+     fijados.length === 1 && fijados[0].tipo === 'pick' && fijados[0].id === 51, JSON.stringify(fijados));
+  await dormir(150);
+  ok('el resumen ya dice que pickeé y con qué', vigia.estado.seleccion.yaPickee && vigia.estado.seleccion.miCampeon === 'Caitlyn',
+     JSON.stringify({ ya: vigia.estado.seleccion.yaPickee, c: vigia.estado.seleccion.miCampeon }));
+
+  /* Al salir de la selección, el plan se olvida: la próxima es otra partida. */
+  falso.caerse(); await dormir(200);
+  ok('al terminar la selección el plan se borra', vigia.plan.ban === null && vigia.plan.pick === null);
+
+  /* El ban: se planea, se marca en mi turno, y se fija. */
+  falso.entrarSeleccion({ turno: 'ban', segundos: 25 });
+  await dormir(200);
+  const antesDelBan = marcas().length;
+  const ban = await vigia.planear('ban', 22);
+  ok('en mi turno de ban, planear lo marca enseguida',
+     ban.ok && marcas().length === antesDelBan + 1 && marcas().at(-1).accion === 102 && marcas().at(-1).championId === 22,
+     JSON.stringify(marcas().slice(antesDelBan)));
+  const baneo = await vigia.fijar('ban');
+  ok('y fijar lo banea', baneo.ok && mia(102).completed && mia(102).championId === 22, JSON.stringify(baneo));
+  ok('fijar un pick en turno de ban se rechaza', (await vigia.fijar('pick')).ok === false);
+
+  /* Si el cliente rechaza la marca, se avisa una vez y no se insiste. Se
+     planea Ashe antes del turno; mientras tanto la banea otro; llega el turno
+     y el cliente rechaza marcarla. */
+  const problemas = [];
+  vigia.on('problema', (x) => problemas.push(x));
+  falso.caerse(); await dormir(200);
+  falso.entrarSeleccion({ turno: 'ban', segundos: 25 });
+  mia(102).isInProgress = false;
+  await dormir(150);
+  ok('el ban se puede planear antes de que te toque', (await vigia.planear('ban', 22)).ok && mia(102).championId === 0);
+  const otro = falso.estado.seleccion.actions.flat().find((a) => a.id === 100);
+  Object.assign(otro, { championId: 22, completed: true, isInProgress: false });
+  const intentos = () => falso.estado.pedidos.filter((x) => x === 'PATCH /lol-champ-select/v1/session/actions/102').length;
+  const antesDelRechazo = intentos();
+  mia(102).isInProgress = true;
+  await dormir(400);
+  ok('si el cliente rechaza la marca, lo intenta una sola vez', intentos() - antesDelRechazo === 1,
+     `intentos=${intentos() - antesDelRechazo}`);
+  ok('y lo dice una sola vez, con el nombre', problemas.length === 1 && /Ashe/.test(problemas[0].mensaje),
+     JSON.stringify(problemas));
+  const rechazado = await vigia.fijar('ban');
+  ok('fijar explica por qué no se puede', rechazado.ok === false && /no lo aceptó/.test(rechazado.detalle),
+     JSON.stringify(rechazado));
+  falso.caerse(); await dormir(200);
+
+  /* Sin plan, fijar usa lo que esté marcado en el cliente. */
+  falso.caerse(); await dormir(200);
+  falso.entrarSeleccion({ turno: 'pick', segundos: 20 });
+  await dormir(150);
+  /* Caitlyn: en esta sesión Ashe, Blitzcrank, Brand y Braum ya están tomados. */
+  mia(204).championId = 51;
+  const sinPlan = await vigia.fijar('pick');
+  ok('sin plan, fija lo que marcaste en la PC', sinPlan.ok && sinPlan.campeon === 'Caitlyn', JSON.stringify(sinPlan));
+  falso.caerse(); await dormir(200);
+  falso.entrarSeleccion({ turno: 'pick', segundos: 20 });
+  await dormir(150);
+  const nada = await vigia.fijar('pick');
+  ok('y sin nada marcado, no inventa', nada.ok === false && /ningún campeón/.test(nada.detalle), JSON.stringify(nada));
+
+  ok('el aviso del turno cuenta lo que ya está marcado',
+     /Zed/.test(armarAviso('tuTurnoBan', { segundos: 20, planBan: 'Zed' }).texto) &&
+     /Ahri/.test(armarAviso('tuTurnoPick', { segundos: 20, planPick: 'Ahri', equipo: [] }).texto));
+  falso.caerse(); await dormir(200);
 } finally {
   vigia.parar();
   await falso.cerrar();

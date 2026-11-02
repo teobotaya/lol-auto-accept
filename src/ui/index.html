@@ -49,6 +49,18 @@
       </div>
       <div class="reloj" id="sel-reloj"><span id="sel-seg">—</span><small>s</small></div>
     </div>
+    <div class="jugada" id="jugada">
+      <button class="slot" id="slot-ban" data-tipo="ban" type="button">
+        <span class="slot-img"><img alt="" hidden></span>
+        <span class="slot-txt"><small>Banear</small><b>Elegir</b></span>
+      </button>
+      <button class="slot" id="slot-pick" data-tipo="pick" type="button">
+        <span class="slot-img"><img alt="" hidden></span>
+        <span class="slot-txt"><small>Pickear</small><b>Elegir</b></span>
+      </button>
+    </div>
+    <button class="b b-oro b-fijar" id="fijar" type="button" hidden>Fijar</button>
+    <p class="resultado mono" id="sel-resultado" aria-live="polite"></p>
     <ul class="equipo" id="sel-equipo"></ul>
     <p class="baneos" id="sel-baneos"></p>
   </section>
@@ -133,6 +145,22 @@
   <p class="solo-telefono">Estás viendo el panel de la Mac desde la red de tu casa. Los ajustes se cambian allá.</p>
   <p>Habla con la API local del cliente (LCU). No lee la pantalla, no mueve el mouse y no toca el proceso del juego.</p>
 </footer>
+<!-- La hoja para elegir campeón: abajo en el teléfono, al centro en la Mac. -->
+<div class="hoja" id="hoja" hidden role="dialog" aria-modal="true" aria-labelledby="hoja-titulo">
+  <div class="hoja-cuerpo">
+    <div class="hoja-cab">
+      <h2 id="hoja-titulo">Elegí tu pick</h2>
+      <button class="b" id="hoja-cerrar" type="button">Cerrar</button>
+    </div>
+    <input type="search" id="hoja-buscar" placeholder="Buscar campeón" autocomplete="off" spellcheck="false" aria-label="Buscar campeón">
+    <p class="hoja-rotulo" id="hoja-recientes-rotulo" hidden>Los últimos que elegiste</p>
+    <ul class="grilla" id="hoja-recientes"></ul>
+    <p class="hoja-rotulo" id="hoja-todos-rotulo">Todos</p>
+    <ul class="grilla" id="hoja-grilla"></ul>
+    <p class="ayuda" id="hoja-vacia" hidden>No hay campeones disponibles todavía.</p>
+    <button class="b" id="hoja-quitar" type="button">Quitar la elección</button>
+  </div>
+</div>
 <script src="ui.js" defer></script>
 </body>
 </html>

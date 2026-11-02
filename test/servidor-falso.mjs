@@ -30,6 +30,9 @@ export function certificadoFalso() {
 }
 
 
+/* Un PNG de 1×1: para lo que importa, un ícono es un ícono. */
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
+
 /* Un puñado de campeones reales: los nombres salen del cliente, no de internet,
    así que el catálogo es parte de lo que hay que simular. */
 export const CAMPEONES = [
@@ -59,7 +62,7 @@ const PICKS = [22, 53, 63, 201, 51, 266, 103, 84, 12, 32];
    selección que importe. */
 export function sesionSeleccion({ yo = 2, segundos = 27, turno = null, hechos = 0,
                                   infinito = false, ronda = 1, simultaneo = false,
-                                  msCrudos = null } = {}) {
+                                  msCrudos = null, fase = 'BAN_PICK' } = {}) {
   const enBanes = turno === 'ban';
   const bans = MI_EQUIPO.map((j, i) => ({
     id: 100 + (ronda - 1) * 10 + i, actorCellId: j.cellId, championId: enBanes ? 0 : BANEOS[i],
@@ -83,7 +86,7 @@ export function sesionSeleccion({ yo = 2, segundos = 27, turno = null, hechos = 
     timer: {
       adjustedTimeLeftInPhase: msCrudos ?? Math.round(segundos * 1000),
       totalTimeInPhase: 30000,
-      phase: 'BAN_PICK',
+      phase: fase,
       isInfinite: infinito,
     },
     myTeam: MI_EQUIPO.map((j) => ({ ...j, championId: elegido.get(j.cellId) ?? 0, championPickIntent: 0, summonerId: 1000 + j.cellId })),
@@ -104,6 +107,7 @@ export function servidorFalso({ clave = 'clave-de-prueba' } = {}) {
     pedidos: [],
     fallarAceptar: false,
     seleccion: null,
+    marcas: [],
   };
 
   const esperado = 'Basic ' + Buffer.from(`riot:${clave}`).toString('base64');
@@ -132,6 +136,51 @@ export function servidorFalso({ clave = 'clave-de-prueba' } = {}) {
       return responder(200, est.seleccion);
     }
     if (req.url === '/lol-game-data/assets/v1/champion-summary.json') return responder(200, CAMPEONES);
+
+    /* Lo que se puede elegir o banear: todo el catálogo menos lo que ya está
+       tomado. est.sinTener simula campeones que el jugador no compró. */
+    if (req.url === '/lol-champ-select/v1/pickable-champion-ids' || req.url === '/lol-champ-select/v1/bannable-champion-ids') {
+      if (!est.seleccion) return responder(404, { message: 'No active delegate' });
+      const tomados = new Set(est.seleccion.actions.flat().filter((a) => a.completed).map((a) => a.championId));
+      const pick = req.url.includes('pickable');
+      return responder(200, CAMPEONES.map((c) => c.id)
+        .filter((id) => id > 0 && !tomados.has(id) && !(pick && est.sinTener?.includes(id))));
+    }
+    const icono = /^\/lol-game-data\/assets\/v1\/champion-icons\/(-?\d+)\.png$/.exec(req.url);
+    if (icono) {
+      /* est.iconos permite mostrar caras de verdad en una demo; sin eso, un
+         PNG de un píxel alcanza para las pruebas. */
+      res.writeHead(200, { 'content-type': 'image/png' });
+      return res.end(est.iconos?.get(Number(icono[1])) ?? PNG);
+    }
+
+    /* Marcar o fijar, como lo hace la interfaz de League: PATCH a la acción
+       con { championId, completed }. Rechaza lo que rechazaría el cliente:
+       una acción que no es tuya y un campeón tomado. */
+    const accion = /^\/lol-champ-select\/v1\/session\/actions\/(\d+)$/.exec(req.url);
+    if (req.method === 'PATCH' && accion) {
+      let cuerpo = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => { cuerpo += c; });
+      req.on('end', () => {
+        const a = est.seleccion?.actions.flat().find((x) => x.id === Number(accion[1]));
+        if (!a) return responder(404, { message: 'no existe esa acción' });
+        if (a.actorCellId !== est.seleccion.localPlayerCellId) return responder(400, { message: 'no es tu acción' });
+        const { championId, completed } = JSON.parse(cuerpo || '{}');
+        const tomado = est.seleccion.actions.flat().some((x) => x.completed && x.championId === championId);
+        if (tomado) return responder(400, { message: 'campeón no disponible' });
+        if (completed && !a.isInProgress) return responder(400, { message: 'todavía no es tu turno' });
+        est.marcas.push({ accion: a.id, championId, completed: !!completed });
+        a.championId = championId;
+        if (completed) { a.completed = true; a.isInProgress = false; }
+        const jugador = est.seleccion.myTeam.find((j) => j.cellId === a.actorCellId);
+        if (a.type === 'pick' && jugador) {
+          if (completed) jugador.championId = championId; else jugador.championPickIntent = championId;
+        }
+        responder(204, null);
+      });
+      return;
+    }
 
     if (req.url === '/lol-matchmaking/v1/ready-check') {
       if (!est.readyCheck) return responder(404, { httpStatus: 404, message: 'Not attached to a ready check' });

@@ -24,6 +24,8 @@ export const POR_DEFECTO = {
   /* Ver el panel desde el teléfono. Apagado de fábrica: abrir algo a la red
      tiene que ser una decisión, no un valor por defecto. */
   remoto: { activo: false, llave: '' },
+  /* Los últimos que elegiste desde el panel, para tenerlos a un toque. */
+  recientes: { ban: [], pick: [] },
 };
 
 /* La llave del panel remoto: 24 caracteres al azar, de los que se pueden
@@ -31,6 +33,9 @@ export const POR_DEFECTO = {
 const LLAVE_VALIDA = /^[\w-]{16,64}$/;
 
 const CANALES_VALIDOS = new Set(['ninguno', 'ntfy', 'pushcut', 'webhook', 'imessage']);
+
+const listaDeIds = (v) => (Array.isArray(v) ? v : [])
+  .map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 8);
 
 const entero = (v, min, max, sino) => {
   const n = Number.parseInt(v, 10);
@@ -60,6 +65,10 @@ export function sanear(entrada = {}) {
       /* Los avisos de la selección se pueden apagar solos, sin perder el de
          "partida aceptada", que es el que de verdad no querés perderte. */
       seleccion: entrada.avisos?.seleccion !== false,
+    },
+    recientes: {
+      ban: listaDeIds(entrada.recientes?.ban),
+      pick: listaDeIds(entrada.recientes?.pick),
     },
     remoto: {
       /* Sin llave no hay acceso remoto: un panel abierto a la red sin nada que

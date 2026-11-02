@@ -53,8 +53,10 @@ main{max-width:760px;margin:0 auto;padding:clamp(18px,4vw,30px);display:grid;gap
 .anillo span{position:relative;font-variant-numeric:tabular-nums}
 .anillo[data-apremio="true"]{color:var(--rojo);background:conic-gradient(var(--rojo) calc(var(--p) * 360deg),#232D3B 0)}
 .botonera{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
-.b-oro{background:var(--oro);color:var(--oro-txt);border-color:var(--oro);font-weight:700}
-.b-oro:hover{background:#D8BC80;border-color:#D8BC80}
+/* .b.b-oro y no .b-oro: .b se define más abajo y, con la misma
+   especificidad, ganaba y dejaba el botón gris. */
+.b.b-oro{background:var(--oro);color:var(--oro-txt);border-color:var(--oro);font-weight:700}
+.b.b-oro:hover{background:#D8BC80;border-color:#D8BC80}
 .cuenta-atras p{color:var(--apagado);font-size:14px}
 .cuenta-atras b{color:var(--txt);font-family:var(--mono)}
 
@@ -107,7 +109,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--oro);
   cursor:pointer;border:3px solid var(--tarjeta)}
 .mono{font-family:var(--mono)}
-select,input[type=text]{width:100%;min-width:0;padding:11px 13px;border-radius:10px;
+select,input[type=text],input[type=search]{width:100%;min-width:0;padding:11px 13px;border-radius:10px;
   border:1px solid var(--borde);background:#0E141C;color:var(--txt);font:inherit;font-size:14px}
 select:hover,input[type=text]:hover{border-color:#31405A}
 .acciones-aviso{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px}
@@ -151,6 +153,57 @@ body:not([data-local="false"]) .solo-telefono{display:none}
   footer{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
   .barra{padding-top:max(20px, env(safe-area-inset-top))}
 }
+
+/* ------------------------------------------- tu jugada en la selección
+   Durante la selección, lo que importa va primero: la tarjeta sube arriba de
+   todo, también en el teléfono. */
+.seleccion{order:-1}
+.jugada{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.slot{display:flex;align-items:center;gap:12px;min-height:66px;padding:10px 12px;border-radius:12px;
+  border:1px dashed #31405A;background:#0E141C;color:var(--txt);text-align:left;cursor:pointer;
+  font:inherit;transition:border-color .15s var(--e),transform .12s ease-out}
+.slot:hover{border-color:var(--oro)}
+.slot:active{transform:scale(.98)}
+.slot[data-elegido="true"]{border-style:solid;border-color:var(--oro)}
+.slot:disabled{cursor:default;opacity:.75;border-style:solid;border-color:var(--borde)}
+.slot-img{width:44px;height:44px;border-radius:10px;overflow:hidden;background:#1A222D;flex-shrink:0;
+  display:grid;place-items:center}
+.slot-img img{width:100%;height:100%;object-fit:cover}
+.slot-txt{display:grid;gap:2px;min-width:0}
+.slot-txt small{font:700 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--tenue)}
+.slot-txt b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot[data-tipo="ban"][data-elegido="true"] .slot-img img{filter:grayscale(1)}
+.b-fijar{width:100%;min-height:54px;font-size:16px}
+/* El primer toque arma, el segundo fija: un campeón fijado no tiene vuelta. */
+/* Con :hover incluido: en el iPhone el hover queda pegado después del toque
+   y, sin esto, el botón armado seguía dorado. */
+.b.b-fijar[data-armado="true"],.b.b-fijar[data-armado="true"]:hover{background:var(--rojo);border-color:var(--rojo);color:#fff}
+#sel-resultado:empty{display:none}
+
+.hoja{position:fixed;inset:0;z-index:50;display:grid;align-items:end;background:rgba(4,7,11,.72);
+  animation:aparece .2s var(--e)}
+.hoja-cuerpo{width:100%;max-width:640px;max-height:88vh;margin:0 auto;overflow-y:auto;
+  background:var(--tarjeta);border:1px solid var(--borde);border-bottom:0;border-radius:18px 18px 0 0;
+  padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));animation:sube .28s var(--e)}
+@keyframes sube{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+@media (min-width:700px){
+  .hoja{align-items:center}
+  .hoja-cuerpo{border-radius:18px;border-bottom:1px solid var(--borde);max-height:80vh}
+}
+.hoja-cab{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.hoja-cab h2{font-size:18px}
+.hoja-cab .b{min-height:38px;padding:0 14px;font-size:13.5px}
+.hoja-rotulo{font:700 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--tenue);
+  margin:16px 0 8px}
+.grilla{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px}
+.grilla button{width:100%;display:grid;justify-items:center;gap:5px;padding:6px 2px 8px;border-radius:12px;
+  border:1px solid transparent;background:none;color:var(--apagado);font:500 11.5px/1.2 Inter,sans-serif;cursor:pointer}
+.grilla button:hover{background:#18212C;color:var(--txt)}
+.grilla button[aria-pressed="true"]{border-color:var(--oro);color:var(--txt);background:#18212C}
+.grilla img{width:52px;height:52px;border-radius:12px;background:#1A222D;object-fit:cover}
+.grilla span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hoja-quitar{margin-top:18px;width:100%}
+body.con-hoja{overflow:hidden}
 
 footer{max-width:760px;margin:0 auto;padding:10px clamp(18px,4vw,30px) 40px;
   color:var(--tenue);font-size:12.5px}

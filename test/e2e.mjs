@@ -227,6 +227,39 @@ try {
      JSON.stringify(avisos.map((a) => JSON.parse(a.cuerpo).evento)));
   ok('pero el panel los sigue mostrando igual',
      (await api('/api/estado')).seleccion?.miPosicion === 'ADC');
+
+  /* Elegir el pick desde el panel, como desde el teléfono. */
+  const camp = await api('/api/campeones?tipo=pick');
+  ok('el panel lista los campeones que se pueden elegir',
+     camp.campeones?.length === 5 && camp.campeones.every((c) => c.id && c.nombre), JSON.stringify(camp.campeones));
+  const icono = await fetch(`http://127.0.0.1:${PANEL}/api/icono/51`);
+  const bytes = Buffer.from(await icono.arrayBuffer());
+  ok('y sirve los íconos que tiene el cliente, como PNG',
+     icono.status === 200 && icono.headers.get('content-type') === 'image/png' && bytes.subarray(1, 4).toString() === 'PNG',
+     `${icono.status} ${icono.headers.get('content-type')}`);
+  ok('un ícono con un id raro no llega al cliente',
+     (await fetch(`http://127.0.0.1:${PANEL}/api/icono/..%2F..%2Fx`)).status === 404);
+  /* Ya pasó la planificación y no es mi turno: el plan se guarda y espera. */
+  const plan = await api('/api/plan?tipo=pick&campeon=51', 'POST');
+  ok('planear el pick fuera de tu turno lo guarda sin tocar el cliente',
+     plan.ok && plan.plan.pick?.id === 51 && falso.estado.marcas.length === 0, JSON.stringify(falso.estado.marcas));
+  e = await api('/api/estado');
+  ok('el estado trae el plan para pintar la casilla', e.plan?.pick?.nombre === 'Caitlyn', JSON.stringify(e.plan));
+  const temprano = await api('/api/fijar?tipo=pick', 'POST');
+  ok('fijar sin que sea tu turno no hace nada', temprano.ok === false, JSON.stringify(temprano));
+  falso.estado.seleccion.actions.flat().find((a) => a.id === 204).isInProgress = true;
+  await dormir(1300);
+  ok('cuando te toca, la app lo marca sola en el cliente',
+     falso.estado.marcas.some((m) => m.accion === 204 && m.championId === 51 && !m.completed),
+     JSON.stringify(falso.estado.marcas));
+  const fijado = await api('/api/fijar?tipo=pick', 'POST');
+  ok('en tu turno, "Fijar" lo bloquea', fijado.ok && fijado.campeon === 'Caitlyn' &&
+     falso.estado.marcas.at(-1).completed === true, JSON.stringify(fijado));
+  await dormir(300);
+  const conRecientes = await api('/api/campeones?tipo=pick');
+  ok('y queda primero entre los recientes', conRecientes.recientes?.[0] === 51, JSON.stringify(conRecientes.recientes));
+  ok('ningún POST de selección pasa sin la cabecera propia',
+     (await fetch(`http://127.0.0.1:${PANEL}/api/fijar?tipo=pick`, { method: 'POST' })).status === 403);
   falso.caerse();
   await dormir(1600);
   await api('/api/avisos?seleccion=si', 'POST');
@@ -274,6 +307,10 @@ try {
        JSON.stringify({ c: remotoEstado.conectado, l: remotoEstado.local }));
     const tocar = await fetch(`${base}/api/avisos?canal=ninguno`, { method: 'POST', headers: { cookie, 'x-auto-accept': '1' } });
     ok('pero los ajustes no se tocan desde el teléfono', tocar.status === 403, String(tocar.status));
+    const desdeTel = await fetch(`${base}/api/fijar?tipo=pick`, { method: 'POST', headers: { cookie, 'x-auto-accept': '1' } });
+    const cuerpoTel = await desdeTel.json();
+    ok('elegir y fijar campeón sí se puede desde el teléfono',
+       desdeTel.status === 200 && /selección/.test(cuerpoTel.detalle ?? ''), JSON.stringify(cuerpoTel));
     const otra = await fetch(`${base}/api/estado`, { headers: { cookie: 'aa_llave=una-llave-cualquiera-de-24' } });
     ok('una llave inventada no entra', otra.status === 401, String(otra.status));
 

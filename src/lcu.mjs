@@ -28,7 +28,9 @@ export class Lcu {
     this.certificadoVisto = null;
   }
 
-  pedir(metodo, ruta, cuerpo) {
+  /* `crudo` devuelve los bytes tal cual llegan, con su tipo: los íconos de
+     los campeones son PNG y pasarlos por JSON.parse los rompería. */
+  pedir(metodo, ruta, cuerpo, { crudo = false } = {}) {
     return new Promise((resolver, rechazar) => {
       const datos = cuerpo === undefined ? null : JSON.stringify(cuerpo);
       const req = request({
@@ -42,10 +44,14 @@ export class Lcu {
         },
         timeout: 4000,
       }, (res) => {
-        let txt = '';
-        res.setEncoding('utf8');
-        res.on('data', (c) => { txt += c; });
+        const partes = [];
+        res.on('data', (c) => { partes.push(c); });
         res.on('end', () => {
+          const bytes = Buffer.concat(partes);
+          if (crudo && res.statusCode < 400) {
+            return resolver({ tipo: res.headers['content-type'] ?? 'application/octet-stream', datos: bytes });
+          }
+          const txt = bytes.toString('utf8');
           let json = null;
           try { json = txt ? JSON.parse(txt) : null; } catch { json = txt; }
           if (res.statusCode >= 400) {
@@ -96,6 +102,22 @@ export class Lcu {
 
   /* La sesión de selección de campeones: acciones, equipos y el reloj. */
   champSelect() { return this.pedir('GET', '/lol-champ-select/v1/session'); }
+
+  /* Marcar y fijar. Es la misma llamada que hace la interfaz de League (está
+     en su código, en rcp-fe-lol-champ-select): con completed en false el
+     campeón queda marcado —tu equipo lo ve, todavía podés cambiarlo— y con
+     true queda fijado. Sirve igual para un ban que para un pick. */
+  marcar(accionId, championId, fijar = false) {
+    return this.pedir('PATCH', `/lol-champ-select/v1/session/actions/${Number(accionId)}`,
+      { championId: Number(championId), completed: !!fijar });
+  }
+  /* Lo que de verdad se puede elegir: tus campeones (o los gratis de la
+     semana) menos los que ya agarró o baneó alguien. */
+  pickables() { return this.pedir('GET', '/lol-champ-select/v1/pickable-champion-ids'); }
+  baneables() { return this.pedir('GET', '/lol-champ-select/v1/bannable-champion-ids'); }
+  icono(id) {
+    return this.pedir('GET', `/lol-game-data/assets/v1/champion-icons/${Number(id)}.png`, undefined, { crudo: true });
+  }
 
   /* El catálogo de campeones lo sirve el propio cliente, así que los nombres
      no dependen de internet ni de Data Dragon: si League está abierto, están.

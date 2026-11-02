@@ -29,6 +29,7 @@ let vigia = null;
    hereda la cuenta del anterior. */
 let cuenta = null;
 let buscando = null;
+const iconos = new Map();
 /* conectar() tarda segundos —lanza PowerShell o ps, y después dos pedidos con
    4 s de límite—, bastante más que los 5 s del reintento. Sin esta marca dos
    intentos podían solaparse y dejar dos vigías vivos (cada partida aceptada
@@ -112,6 +113,12 @@ async function intentarConectar() {
     avisador.avisar(momento, datos);
   });
   vigia.on('problema', ({ mensaje }) => anotar('error', mensaje));
+  vigia.on('fijado', ({ tipo, id, nombre }) => {
+    anotar('ok', tipo === 'ban' ? `baneaste ${nombre} desde el panel` : `fijaste ${nombre} desde el panel`);
+    const lista = config.recientes[tipo];
+    config.recientes[tipo] = [id, ...lista.filter((x) => x !== id)].slice(0, 8);
+    ajustes.guardar(config);
+  });
   /* El cliente se cerró, o se reinició con otro puerto y otra contraseña: el
      vigía ya no le puede hablar. Se lo suelta y se vuelve a buscar desde cero,
      igual que al arrancar. */
@@ -252,6 +259,42 @@ const servidor = createServer((req, res) => {
       (aceptado) => json(res, { aceptado }),
       (e) => json(res, { aceptado: false, detalle: e.message }));
   }
+  /* La selección de campeones, desde el teléfono o desde la Mac: qué se
+     puede elegir, qué marcaste y fijarlo. */
+  const tipo = url.searchParams.get('tipo');
+  if (url.pathname === '/api/campeones') {
+    if (!vigia) return json(res, { campeones: [], recientes: [] });
+    return vigia.disponibles(tipo === 'ban' ? 'ban' : 'pick').then((campeones) => json(res, {
+      campeones, recientes: config.recientes[tipo === 'ban' ? 'ban' : 'pick'], plan: vigia.planVisible(),
+    }));
+  }
+  if (url.pathname === '/api/plan' && req.method === 'POST') {
+    if (!vigia) return json(res, { ok: false, detalle: 'no hay cliente' });
+    return vigia.planear(tipo, url.searchParams.get('campeon')).then((r) => {
+      if (r.ok) anotar('cola', `${tipo === 'ban' ? 'para banear' : 'para pickear'}: ${r.plan[tipo]?.nombre ?? 'nada'}`);
+      json(res, r);
+    });
+  }
+  if (url.pathname === '/api/fijar' && req.method === 'POST') {
+    if (!vigia) return json(res, { ok: false, detalle: 'no hay cliente' });
+    return vigia.fijar(tipo).then((r) => json(res, r));
+  }
+  /* Los íconos los sirve el cliente, con su certificado y su contraseña: el
+     navegador no puede pedírselos directo, así que pasan por acá. Se guardan
+     en memoria porque no cambian entre partidas. */
+  const icono = /^\/api\/icono\/(\d{1,5})$/.exec(url.pathname);
+  if (icono) {
+    const id = Number(icono[1]);
+    const responder = ({ tipo: t, datos }) => {
+      res.writeHead(200, { 'content-type': t, 'cache-control': 'private, max-age=86400' });
+      res.end(datos);
+    };
+    if (iconos.has(id)) return responder(iconos.get(id));
+    if (!lcu) return json(res, { error: 'no hay cliente' }, 404);
+    return lcu.icono(id).then((i) => { iconos.set(id, i); responder(i); },
+                             () => json(res, { error: 'sin ícono' }, 404));
+  }
+
   /* Lo que sigue configura la Mac: solo desde la Mac. El teléfono mira, pausa,
      acepta y cancela; no cambia a dónde van los avisos ni abre la red. */
   if (!local && /^\/api\/(avisos|probar-aviso|ajustes|remoto|canales)/.test(url.pathname)) {
