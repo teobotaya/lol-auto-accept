@@ -135,7 +135,7 @@ export const MOMENTOS_SELECCION = new Set(Object.keys(MOMENTOS));
 /* Del resumen de la selección viaja solo esto. El objeto entero trae los dos
    equipos y no hace falta: un webhook que enciende una luz o un atajo que lee
    en voz alta necesita saber si te toca y cuánto queda, nada más. */
-const CAMPOS = ['fase', 'segundos', 'miTurno', 'tipoTurno', 'miPosicion', 'miCampeon', 'turnosAntes'];
+const CAMPOS = ['fase', 'segundos', 'infinito', 'miTurno', 'tipoTurno', 'miPosicion', 'miCampeon', 'turnosAntes'];
 
 export function armarMensaje(evento, datos = {}) {
   if (evento === 'prueba') {

@@ -3,7 +3,14 @@
    API HTTP, igual que hace el panel. */
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { servidorFalso } from './servidor-falso.mjs';
+
+/* Los ajustes de la prueba van a una carpeta descartable: correr el test no
+   puede pisarte el canal de avisos ni el retardo que tengas configurados. */
+const CARPETA_AJUSTES = mkdtempSync(join(tmpdir(), 'ajustes-'));
 
 /* Un receptor de avisos falso: es el iPhone, para lo que importa acá. */
 const avisos = [];
@@ -31,7 +38,7 @@ const PANEL = await new Promise((r) => {
 });
 
 const app = spawn(process.execPath, ['src/index.mjs'], {
-  env: { ...process.env, LOCKFILE: lockfile, PUERTO_PANEL: String(PANEL), SIN_NAVEGADOR: '1' },
+  env: { ...process.env, LOCKFILE: lockfile, PUERTO_PANEL: String(PANEL), SIN_NAVEGADOR: '1', CARPETA_AJUSTES },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let salida = '';
@@ -178,6 +185,17 @@ try {
   falso.caerse();
   await dormir(1600);
   await api('/api/avisos?seleccion=si', 'POST');
+
+  /* Cambiar de canal no puede arrastrar el destino del anterior: un token de
+     Pushcut no es un tema de ntfy, y mandarlo igual sería postear tu secreto a
+     otro servicio y quedarte sin avisos sin enterarte. */
+  const aNtfy = await api('/api/avisos?canal=ntfy', 'POST');
+  ok('cambiar de canal no hereda el destino del anterior',
+     aNtfy.canal === 'ntfy' && !aNtfy.destinoVisible, JSON.stringify(aNtfy));
+  const vuelta = await api(`/api/avisos?canal=webhook&destino=${destino}`, 'POST');
+  ok('y volver a configurar el canal anda', vuelta.canal === 'webhook' && !!vuelta.destinoVisible,
+     JSON.stringify(vuelta));
+  ok('la respuesta nunca devuelve el destino en claro', vuelta.destino === undefined, JSON.stringify(vuelta));
 
   /* Con el receptor caído la partida se tiene que aceptar igual. */
   await new Promise((r) => receptor.close(r));

@@ -13,7 +13,7 @@
 
 /* Las acciones vienen agrupadas por turno: [[ban,ban,ban],[pick],[pick,pick]].
    Aplanarlas es lo primero, porque lo que importa es cuál está en curso. */
-const aplanar = (acciones = []) => acciones.flat().filter(Boolean);
+const aplanar = (acciones) => (Array.isArray(acciones) ? acciones : []).flat().filter(Boolean);
 
 export function resumen(sesion, catalogo = new Map()) {
   if (!sesion || typeof sesion !== 'object') return null;
@@ -34,8 +34,14 @@ export function resumen(sesion, catalogo = new Map()) {
   };
   const miPick = mias.find((a) => a.type === 'pick');
 
-  const ms = Number(sesion.timer?.adjustedTimeLeftInPhase ?? 0);
-  const segundos = Math.max(0, Math.round(ms / 1000));
+  /* El reloj tiene tres formas de no ser un número de segundos: la bandera
+     isInfinite, el centinela enorme que manda el cliente cuando la fase no
+     corre (partidas personalizadas, practice tool) y directamente basura. Las
+     tres terminan en lo mismo: no hay cuenta regresiva que mostrar. Sin esto
+     el aviso decía "quedan 2147484 s", que es peor que no decir nada. */
+  const ms = Number(sesion.timer?.adjustedTimeLeftInPhase);
+  const infinito = !!sesion.timer?.isInfinite || !Number.isFinite(ms) || ms > 60 * 60 * 1000;
+  const segundos = infinito ? 0 : Math.max(0, Math.round(ms / 1000));
 
   const equipo = (sesion.myTeam ?? []).map((j) => ({
     esYo: j.cellId === yo,
@@ -49,9 +55,13 @@ export function resumen(sesion, catalogo = new Map()) {
   return {
     fase: sesion.timer?.phase ?? 'DESCONOCIDA',
     segundos,
-    infinito: !!sesion.timer?.isInfinite,
+    infinito,
     miTurno: !!enCurso,
     tipoTurno: enCurso?.type ?? null,          // 'pick' | 'ban' | null
+    /* El id de la acción en curso distingue un turno de otro. Hace falta para
+       no comerse el segundo baneo en los modos que tienen dos rondas: sin él,
+       "ya avisé tuTurnoBan" valdría para toda la partida. */
+    accionId: enCurso?.id ?? null,
     miPosicion: mio?.posicion ?? null,
     miCampeon: nombre(miPick?.championId) ?? mio?.campeon ?? null,
     yaBanee: yaHice.ban,
@@ -75,13 +85,20 @@ export function normalizarPosicion(p) {
 export function turnosAntesDelMio(acciones, yo) {
   const pendientes = acciones.filter((a) => a.type === 'pick' && !a.completed);
   const i = pendientes.findIndex((a) => a.actorCellId === yo);
-  return i < 0 ? null : i;
+  if (i < 0) return null;
+  /* En blind y en ARAM los cinco pickean a la vez, así que los picks de mis
+     compañeros figuran "antes" del mío aunque nadie esté esperando a nadie.
+     Si el mío ya está en curso, no hay ninguno antes: decir "hay 2 picks antes
+     del tuyo" y "te toca pickear" en el mismo segundo es peor que no avisar. */
+  return pendientes[i].isInProgress ? 0 : i;
 }
 
 /* ------------------------------------------------------------------ avisos
    Qué momentos merecen molestar al teléfono. Uno por cosa que cambia lo que
    tenés que hacer; el resto es ruido, y un aviso que no exige nada entrena a
    ignorar los que sí. */
+const reloj = (r) => (r.infinito || !Number.isFinite(r.segundos) ? 'Es tu turno.' : `Quedan ${r.segundos} s.`);
+
 export const MOMENTOS = {
   entraste: {
     /* El título no repite "Partida aceptada": ese aviso ya salió un segundo
@@ -96,12 +113,12 @@ export const MOMENTOS = {
   },
   tuTurnoBan: {
     titulo: 'Te toca BANEAR',
-    texto: (r) => `Quedan ${r.segundos} s.`,
+    texto: (r) => reloj(r),
     etiqueta: 'no_entry',
   },
   tuTurnoPick: {
     titulo: 'Te toca PICKEAR',
-    texto: (r) => `Quedan ${r.segundos} s.` +
+    texto: (r) => reloj(r) +
       (r.equipo?.some((j) => j.campeon && !j.esYo)
         ? ` Tu equipo: ${r.equipo.filter((j) => !j.esYo && j.campeon).map((j) => j.campeon).join(', ')}.`
         : ''),

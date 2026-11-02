@@ -3,7 +3,11 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const CARPETA = join(homedir(), '.lol-auto-accept');
+/* La carpeta se puede mover con una variable de entorno. No es un capricho:
+   sin esto, correr las pruebas de punta a punta en tu propia máquina te pisa
+   los ajustes de verdad —el canal, el destino, el retardo— con los que usa el
+   test. Una prueba no tiene por qué tocar la configuración del usuario. */
+const CARPETA = process.env.CARPETA_AJUSTES || join(homedir(), '.lol-auto-accept');
 const ARCHIVO = join(CARPETA, 'ajustes.json');
 
 export const POR_DEFECTO = {

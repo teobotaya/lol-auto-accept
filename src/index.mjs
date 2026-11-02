@@ -23,6 +23,12 @@ const config = ajustes.leer();
 if (process.env.PUERTO_PANEL) config.puertoPanel = Number(process.env.PUERTO_PANEL);
 let lcu = null;
 let vigia = null;
+/* conectar() tarda segundos —lanza PowerShell o ps, y después dos pedidos con
+   4 s de límite—, bastante más que los 5 s del reintento. Sin esta marca dos
+   intentos podían solaparse y dejar dos vigías vivos (cada partida aceptada
+   dos veces, cada aviso duplicado) o, peor, un vigía con el cliente en null
+   que no vuelve a aceptar nunca. */
+let conectando = false;
 const bitacora = [];
 const avisador = crearAvisador(() => config.avisos, (t, x) => anotar(t, x));
 
@@ -33,28 +39,41 @@ const anotar = (tipo, texto) => {
 };
 
 async function conectar() {
+  if (vigia || conectando) return !!vigia;
+  conectando = true;
+  try {
+    return await intentarConectar();
+  } finally {
+    conectando = false;
+  }
+}
+
+/* El cliente se arma en una variable local y recién al final se publica: si
+   dos intentos se cruzaran, ninguno puede dejarle al otro un lcu a medio
+   hacer. */
+async function intentarConectar() {
   const cred = await descubrir();
   if (!cred) return false;
-  lcu = new Lcu(cred);
+  const cliente = new Lcu(cred);
   /* La prueba de vida es la fase del gameflow, que es lo que el vigía necesita.
      Antes era el nombre de invocador, y eso hacía que la app se negara a
      arrancar con el cliente abierto pero sin sesión iniciada —la pantalla de
      login responde 404 ahí— que es exactamente cuando uno la deja lista. */
   try {
-    await lcu.fase();
+    await cliente.fase();
   } catch (e) {
     anotar('aviso', `encontré el cliente pero no pude hablarle: ${e.message}`);
-    lcu = null;
     return false;
   }
   /* El saludo es un adorno: si falla, no pasa nada. */
   let quien = '';
   try {
-    const yo = await lcu.yo();
+    const yo = await cliente.yo();
     if (yo?.gameName) quien = ` · ${yo.gameName}#${yo.tagLine}`;
   } catch {}
   anotar('ok', `conectado al cliente por ${cred.origen}, puerto ${cred.puerto}${quien}`);
-  vigia = new Vigia(lcu, config);
+  lcu = cliente;
+  vigia = new Vigia(cliente, config);
   vigia.on('aceptando', ({ enMs }) => anotar('cola', `partida encontrada, acepto en ${enMs} ms`));
   vigia.on('aceptado', ({ tras }) => {
     anotar('ok', `aceptada tras ${tras} ms`);
@@ -122,9 +141,17 @@ const servidor = createServer((req, res) => {
   }
   if (url.pathname === '/api/avisos' && req.method === 'POST') {
     const bandera = url.searchParams.get('seleccion');
+    const canal = url.searchParams.get('canal') ?? config.avisos.canal;
+    const escrito = url.searchParams.get('destino');
+    /* Si cambiaste de canal y no escribiste un destino nuevo, el viejo NO se
+       hereda: el token de Pushcut no es un tema de ntfy, y mandarlo igual
+       significaba postear tu secreto a otro servicio y quedarte sin avisos sin
+       enterarte. Vacío también sirve para borrar el destino guardado. */
+    const destino = escrito !== null ? escrito
+                  : canal === config.avisos.canal ? config.avisos.destino : '';
     const nuevo = ajustes.sanear({ ...config, avisos: {
-      canal: url.searchParams.get('canal') ?? config.avisos.canal,
-      destino: url.searchParams.get('destino') ?? config.avisos.destino,
+      canal,
+      destino,
       seleccion: bandera === null ? config.avisos.seleccion : bandera !== 'no',
     } });
     config.avisos = nuevo.avisos;

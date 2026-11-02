@@ -53,8 +53,31 @@ console.log('\nleer la sesión de selección');
   const infinito = resumen(sesionSeleccion({ segundos: 0, infinito: true }), catalogo);
   ok('marca el reloj infinito en vez de decir 0 s', infinito.infinito === true && infinito.segundos === 0);
 
+  /* El cliente manda un centinela enorme cuando la fase no corre. Sin esto el
+     aviso decía "quedan 2147484 s", que es peor que no decir nada. */
+  const centinela = resumen(sesionSeleccion({ turno: 'pick', msCrudos: 2147483647 }), catalogo);
+  ok('un reloj detenido no se muestra como dos millones de segundos',
+     centinela.infinito === true && centinela.segundos === 0, String(centinela.segundos));
+  ok('y el aviso del turno no habla de segundos que no existen',
+     armarAviso('tuTurnoPick', centinela).texto.startsWith('Es tu turno.'),
+     armarAviso('tuTurnoPick', centinela).texto);
+
   ok('un timer negativo no da segundos negativos',
      resumen({ localPlayerCellId: 0, timer: { adjustedTimeLeftInPhase: -500 } }).segundos === 0);
+  ok('un timer que no es número tampoco da NaN',
+     resumen({ localPlayerCellId: 0, timer: { adjustedTimeLeftInPhase: 'x' } }).segundos === 0);
+  ok('una sesión sin acciones no explota',
+     resumen({ localPlayerCellId: 0, actions: null })?.turnosAntes === null);
+
+  /* Blind y ARAM: los cinco pickean a la vez. */
+  const blind = resumen(sesionSeleccion({ simultaneo: true, segundos: 30 }), catalogo);
+  ok('en blind, si estoy pickeando no hay picks "antes del mío"',
+     blind.miTurno === true && blind.turnosAntes === 0,
+     JSON.stringify({ miTurno: blind.miTurno, turnosAntes: blind.turnosAntes }));
+  ok('y el texto no se contradice con el de tu turno',
+     /Pickeás primero/.test(armarAviso('entraste', blind).texto),
+     armarAviso('entraste', blind).texto);
+  ok('el resumen dice qué acción es la mía', blind.accionId !== null, String(blind.accionId));
   ok('turnosAntesDelMio devuelve null si no tengo pick pendiente',
      turnosAntesDelMio([{ type: 'pick', completed: true, actorCellId: 2 }], 2) === null);
   ok('las posiciones se traducen al castellano',
@@ -139,6 +162,12 @@ try {
   ok('la partida siguiente vuelve a avisar', cuantos('entraste') === 2, JSON.stringify(nombres()));
   ok('y avisa el turno de baneo', cuantos('tuTurnoBan') === 1, JSON.stringify(nombres()));
 
+  /* Segunda ronda de baneos (torneo, Clash): el turno vuelve con otra acción y
+     también hay que avisarlo. Antes se lo comía la memoria de avisos. */
+  falso.entrarSeleccion({ turno: 'ban', segundos: 18, ronda: 2 });
+  await dormir(300);
+  ok('la segunda ronda de baneos también avisa', cuantos('tuTurnoBan') === 2, JSON.stringify(nombres()));
+
   falso.caerse();
   await dormir(300);
   ok('si la selección se cae, lo dice', cuantos('cayo') === 1, JSON.stringify(nombres()));
@@ -146,11 +175,36 @@ try {
   await dormir(300);
   ok('y después se queda callado', momentos.length === hasta, JSON.stringify(nombres().slice(hasta)));
 
+  /* El caso feo: el cliente baja la sesión un instante ANTES de cambiar de
+     fase. Si el cierre de partida dependiera de ese objeto, no se limpiaría la
+     memoria de avisos y la partida siguiente entera saldría muda. */
+  const antesDelHueco = momentos.length;
+  falso.entrarSeleccion({ turno: 'pick', segundos: 20 });
+  await dormir(300);
+  ok('la partida nueva avisa igual', momentos.length > antesDelHueco, JSON.stringify(nombres()));
+  falso.soltarSesion();
+  await dormir(200);
+  ok('perder la sesión en plena selección no borra lo que ya se sabía',
+     vigia.estado.seleccion?.miPosicion === 'ADC', JSON.stringify(vigia.estado.seleccion));
+  falso.empezarPartida();
+  await dormir(300);
+  ok('y la partida arranca avisando igual', cuantos('empezo') === 2, JSON.stringify(nombres()));
+
+  const antesDeLaSiguiente = momentos.length;
+  falso.entrarSeleccion({ turno: 'pick', segundos: 24 });
+  await dormir(300);
+  ok('la partida DESPUÉS de ese hueco no se queda muda',
+     momentos.length - antesDeLaSiguiente === 2, JSON.stringify(nombres().slice(antesDeLaSiguiente)));
+  falso.caerse();
+  await dormir(300);
+
   /* ChampSelect sin sesión: el cliente responde 404 y eso no es un error. */
+  const mudo = momentos.length;
   falso.estado.fase = 'ChampSelect';
   await dormir(300);
   ok('una selección sin sesión no rompe ni avisa',
-     momentos.length === hasta && vigia.estado.seleccion === null, JSON.stringify(vigia.estado.seleccion));
+     momentos.length === mudo && vigia.estado.seleccion === null,
+     JSON.stringify({ nuevos: nombres().slice(mudo), seleccion: vigia.estado.seleccion }));
   ok('el vigía sigue vivo', vigia.cuenta.errores === 0, `errores=${vigia.cuenta.errores}`);
 } finally {
   vigia.parar();

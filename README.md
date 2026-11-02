@@ -170,8 +170,8 @@ Si tenés el juego en un lugar raro: `LOCKFILE=/ruta/al/lockfile npm start`.
 npm test
 ```
 
-**150 pruebas**: 31 de unidad e integración, 31 de avisos, 52 de selección de
-campeones y 36 de punta a punta. Corren contra un LCU falso que reproduce lo que
+**165 pruebas**: 31 de unidad e integración, 31 de avisos, 64 de selección de
+campeones y 39 de punta a punta. Corren contra un LCU falso que reproduce lo que
 importa —el certificado autofirmado emitido por Riot, la autenticación básica,
 la fase del gameflow, el ready-check con su contador y la sesión de selección
 con sus acciones y su reloj— y un receptor de notificaciones falso que captura
@@ -183,6 +183,12 @@ corre el vigía completo contra el LCU falso para comprobar lo único que de
 verdad importa de un aviso: que salga cuando cambia algo y **una sola vez**,
 aunque el sondeo pase cien veces por el mismo estado.
 
+Y los casos raros que rompen esa promesa, que son los que hay que buscar a
+propósito: blind y ARAM, donde los cinco pickean a la vez; el reloj detenido
+del practice tool, que manda un centinela de dos mil millones; la segunda ronda
+de baneos de los modos de torneo; y el hueco de un segundo en el que el cliente
+ya bajó la sesión pero todavía dice estar en selección.
+
 Las de punta a punta arrancan la aplicación como la arranca el usuario y la
 manejan desde su propia API HTTP: partida encontrada → acepta; en pausa → no
 acepta; cancelar → no acepta; la partida se cae → no dispara un accept
@@ -190,6 +196,10 @@ huérfano; el cliente se cierra → la app sigue viva y lo dice; el receptor de
 avisos se cae → la partida se acepta igual; entra la selección → avisa tu
 posición y cuántos picks faltan; te toca pickear → avisa; quedan 7 s → avisa una
 última vez; arranca la partida → cierra el ciclo.
+
+Y no te tocan la configuración: la de punta a punta arranca la app con
+`CARPETA_AJUSTES` apuntando a una carpeta descartable, así correr `npm test` en
+tu propia máquina no te pisa el canal de avisos ni el retardo que tengas puesto.
 
 Corren en Windows, macOS y Linux en cada push.
 

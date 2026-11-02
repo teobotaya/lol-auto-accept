@@ -53,11 +53,16 @@ const BANEOS = [266, 103, 84, 12, 32];
 const PICKS = [22, 53, 63, 201, 51, 266, 103, 84, 12, 32];
 
 /* turno: null | 'ban' | 'pick'. hechos: cuántos picks ya se completaron.
-   Con eso alcanza para armar cualquier momento de la selección que importe. */
-export function sesionSeleccion({ yo = 2, segundos = 27, turno = null, hechos = 0, infinito = false } = {}) {
+   ronda: qué número de ronda de baneos es (los modos de torneo tienen dos, y
+   la segunda trae acciones con otros ids). simultaneo: blind y ARAM, donde los
+   cinco pickean a la vez. Con eso alcanza para armar cualquier momento de la
+   selección que importe. */
+export function sesionSeleccion({ yo = 2, segundos = 27, turno = null, hechos = 0,
+                                  infinito = false, ronda = 1, simultaneo = false,
+                                  msCrudos = null } = {}) {
   const enBanes = turno === 'ban';
   const bans = MI_EQUIPO.map((j, i) => ({
-    id: 100 + i, actorCellId: j.cellId, championId: enBanes ? 0 : BANEOS[i],
+    id: 100 + (ronda - 1) * 10 + i, actorCellId: j.cellId, championId: enBanes ? 0 : BANEOS[i],
     type: 'ban', completed: !enBanes, isInProgress: enBanes, isAllyAction: true,
   }));
 
@@ -68,7 +73,7 @@ export function sesionSeleccion({ yo = 2, segundos = 27, turno = null, hechos = 
     id: 200 + i, actorCellId: celda,
     championId: i < completadosHasta ? PICKS[i] : 0,
     type: 'pick', completed: i < completadosHasta,
-    isInProgress: turno === 'pick' && i === miIndice,
+    isInProgress: simultaneo ? true : (turno === 'pick' && i === miIndice),
     isAllyAction: celda < 5,
   }));
 
@@ -76,7 +81,7 @@ export function sesionSeleccion({ yo = 2, segundos = 27, turno = null, hechos = 
   return {
     localPlayerCellId: yo,
     timer: {
-      adjustedTimeLeftInPhase: Math.round(segundos * 1000),
+      adjustedTimeLeftInPhase: msCrudos ?? Math.round(segundos * 1000),
       totalTimeInPhase: 30000,
       phase: 'BAN_PICK',
       isInfinite: infinito,
@@ -161,6 +166,9 @@ export function servidorFalso({ clave = 'clave-de-prueba', timerInicial = 10 } =
       return est.seleccion;
     },
     empezarPartida() { est.fase = 'InProgress'; est.seleccion = null; },
+    /* El cliente baja la sesión un instante antes de cambiar de fase: sigue
+       diciendo ChampSelect y la sesión ya responde 404. */
+    soltarSesion() { est.seleccion = null; },
     lockfile(puerto) {
       const ruta = join(dir, 'lockfile');
       writeFileSync(ruta, `LeagueClient:4242:${puerto}:${clave}:https`);

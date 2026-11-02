@@ -17,9 +17,9 @@ import { EventEmitter } from 'node:events';
 import { resumen } from './champselect.mjs';
 
 export const FASES_EN_COLA = new Set(['Matchmaking', 'ReadyCheck', 'Lobby']);
-/* Cuando la partida está por empezar hay que mirar rápido igual: la selección
-   de campeones es donde el usuario tiene que llegar a tiempo. */
-export const FASES_ATENTO = new Set([...FASES_EN_COLA, 'ChampSelect']);
+/* La selección de campeones tiene su propio ritmo: dura minutos y no diez
+   segundos, así que no necesita el sondeo rápido de la cola. */
+export const FASES_SELECCION = new Set(['ChampSelect']);
 
 export class Vigia extends EventEmitter {
   constructor(lcu, ajustes = {}) {
@@ -36,6 +36,11 @@ export class Vigia extends EventEmitter {
       ...ajustes,
     };
     this.estado = { fase: 'desconocida', enCola: false, aceptando: false, restante: 0, seleccion: null };
+    /* Que estemos en selección NO se deduce de estado.seleccion: el cliente
+       puede bajar la sesión un instante antes de cambiar de fase, y si el
+       cierre de partida dependiera de ese objeto, esa vez no se limpiaría la
+       memoria de avisos y la partida SIGUIENTE entera saldría muda. */
+    this._enSeleccion = false;
     /* Un aviso por momento y por partida: si se repitiera en cada sondeo, el
        teléfono vibraría una vez por segundo. */
     this._avisados = new Set();
@@ -95,19 +100,21 @@ export class Vigia extends EventEmitter {
     this.estado.fase = String(fase).replace(/"/g, '');
     this.estado.enCola = FASES_EN_COLA.has(this.estado.fase);
 
-    if (this.estado.fase === 'ChampSelect') {
+    if (FASES_SELECCION.has(this.estado.fase)) {
+      this._enSeleccion = true;
       await this._selección();
       return this.ajustes.ritmoSeleccion;
     }
     /* Al salir de la selección se limpia la memoria de avisos: la próxima
        partida tiene que poder avisar de nuevo. */
-    if (this.estado.seleccion) {
-      const eraSeleccion = this.estado.seleccion;
+    if (this._enSeleccion) {
+      this._enSeleccion = false;
+      const ultima = this.estado.seleccion;
       this.estado.seleccion = null;
       if (this.estado.fase === 'InProgress' || this.estado.fase === 'GameStart') {
-        this._avisar('empezo', eraSeleccion);
-      } else if (!this._avisados.has('empezo')) {
-        this._avisar('cayo', eraSeleccion);
+        this._avisar('empezo', ultima);
+      } else {
+        this._avisar('cayo', ultima);
       }
       this._avisados.clear();
     }
@@ -118,7 +125,7 @@ export class Vigia extends EventEmitter {
       /* La cancelación vale para esta partida, no para siempre: al salir del
          ready check se olvida, si no la app quedaría muda hasta reiniciarla. */
       this._cancelado = false;
-      return FASES_ATENTO.has(this.estado.fase) ? this.ajustes.ritmoRapido : this.ajustes.ritmoLento;
+      return FASES_EN_COLA.has(this.estado.fase) ? this.ajustes.ritmoRapido : this.ajustes.ritmoLento;
     }
 
     const rc = await this.lcu.readyCheck();
@@ -136,9 +143,12 @@ export class Vigia extends EventEmitter {
     return this.ajustes.ritmoRapido;
   }
 
-  _avisar(momento, datos) {
-    if (this._avisados.has(momento)) return;
-    this._avisados.add(momento);
+  /* La clave puede ser más fina que el momento: los turnos se distinguen por
+     el id de la acción, porque hay modos con dos rondas de baneo y el segundo
+     también hay que avisarlo. */
+  _avisar(momento, datos, clave = momento) {
+    if (this._avisados.has(clave)) return;
+    this._avisados.add(clave);
     this.emit('momento', { momento, datos });
   }
 
@@ -153,15 +163,17 @@ export class Vigia extends EventEmitter {
     catch (e) { if (e.codigo !== 404) throw e; }
 
     const r = resumen(sesion, this._campeones ?? new Map());
-    this.estado.seleccion = r;
+    /* Sin sesión no se pisa lo último que sí se supo: el panel sigue mostrando
+       algo y, sobre todo, el cierre de partida no depende de este objeto. */
     if (!r) return;
+    this.estado.seleccion = r;
 
     this._avisar('entraste', r);
-    if (r.miTurno && r.tipoTurno === 'ban') this._avisar('tuTurnoBan', r);
-    if (r.miTurno && r.tipoTurno === 'pick') this._avisar('tuTurnoPick', r);
+    if (r.miTurno && r.tipoTurno === 'ban') this._avisar('tuTurnoBan', r, `ban:${r.accionId}`);
+    if (r.miTurno && r.tipoTurno === 'pick') this._avisar('tuTurnoPick', r, `pick:${r.accionId}`);
     if (r.miTurno && r.tipoTurno === 'pick' && !r.yaPickee &&
         r.segundos > 0 && r.segundos <= this.ajustes.avisarUltimos) {
-      this._avisar('ultimoAviso', r);
+      this._avisar('ultimoAviso', r, `apuro:${r.accionId}`);
     }
   }
 
